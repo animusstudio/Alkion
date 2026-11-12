@@ -45,7 +45,7 @@ void main() {
   });
 
   test(
-    'shared familiar local names keep only necessary downstream distinctions',
+    'shared retrieval aliases keep each localized canonical execution name',
     () {
       final source = syntheticCatalog();
       final first = source['variants'][0], supported = source['variants'][1];
@@ -62,56 +62,59 @@ void main() {
       }
       final index = CatalogIndex(load(source), locale: 'it');
       for (final v in [first, supported]) {
-        expect(index.variantLabel(v['id']), 'Curl a martello');
-        expect(index.variantLabel(v['id'], query: 'Scott'), 'Curl a martello');
+        expect(index.variantLabel(v['id']), v['names']['it']);
+        expect(index.variantLabel(v['id'], query: 'Scott'), v['names']['it']);
+        expect(index.identifyingVariantLabel(v['id']), v['names']['it']);
       }
-      // An absent support is unknown; it cannot be relabeled as unsupported.
-      expect(index.identifyingVariantLabel(first['id']), first['names']['it']);
-      expect(
-        index.identifyingVariantLabel(supported['id']),
-        'Curl a martello · Panca Scott',
-      );
       final rows = index
           .search('Curl a martello')
           .strict
           .where((h) => h.kind == 'variant');
       expect(rows.length, 2);
-      expect(rows.every((h) => h.label == 'Curl a martello'), isTrue);
+      expect(rows.map((h) => h.label).toSet(), {
+        first['names']['it'],
+        supported['names']['it'],
+      });
       final v = index.bundle.variants[supported['id']]!;
       expect(CatalogLabels('it').distinction(v, [v]), '');
     },
   );
 
-  test(
-    'curated RDL remains concise and equipment identity survives downstream',
-    () {
-      final source = syntheticCatalog();
-      final family = source['families'][0]['id'];
-      source['abbreviations'].add(
-        alias('familiar-rdl', 'RDL', 'family', family),
+  test('acronyms remain retrieval-only in every interface locale', () {
+    final source = syntheticCatalog();
+    final family = source['families'][0]['id'];
+    source['abbreviations'].add(alias('familiar-rdl', 'RDL', 'family', family));
+    source['abbreviations'].add(
+      alias('unfamiliar-acronym', 'ZZZ', 'family', family),
+    );
+    final bundle = load(source);
+    for (final locale in ['en', 'it', 'de', 'es']) {
+      final index = CatalogIndex(bundle, locale: locale);
+      final machine = bundle.variants.values.firstWhere(
+        (v) => v.equipmentKind == 'machine',
       );
-      source['abbreviations'].add(
-        alias('unfamiliar-acronym', 'ZZZ', 'family', family),
-      );
-      final bundle = load(source);
-      for (final locale in ['en', 'it', 'de', 'es']) {
-        final index = CatalogIndex(bundle, locale: locale);
-        final machine = bundle.variants.values.firstWhere(
-          (v) => v.equipmentKind == 'machine',
-        );
-        expect(index.variantLabel(machine.id), 'RDL');
-        expect(
-          index.identifyingVariantLabel(machine.id),
-          'RDL · ${CatalogLabels(locale).equipment('machine')}',
-        );
-        expect(
-          index.search('RDL').strict.any((h) => h.id == machine.id),
-          isTrue,
-        );
-        expect(index.variantLabel(machine.id, query: 'ZZZ'), 'RDL');
-      }
-    },
-  );
+      final canonical = machine.names[locale] ?? machine.names['en'];
+      expect(index.variantLabel(machine.id), canonical);
+      expect(index.identifyingVariantLabel(machine.id), canonical);
+      expect(index.search('RDL').strict.any((h) => h.id == machine.id), isTrue);
+      expect(index.variantLabel(machine.id, query: 'ZZZ'), canonical);
+    }
+  });
+
+  test('equal canonical titles retain standalone execution distinctions', () {
+    final source = syntheticCatalog();
+    for (final v in source['variants'].take(2)) {
+      v['names']['it'] = 'Curl di prova';
+    }
+    final index = CatalogIndex(load(source), locale: 'it');
+    final first = source['variants'][0], supported = source['variants'][1];
+    // Missing support is unknown, not an invented unsupported execution.
+    expect(index.identifyingVariantLabel(first['id']), 'Curl di prova');
+    expect(
+      index.identifyingVariantLabel(supported['id']),
+      'Curl di prova · Panca Scott',
+    );
+  });
 
   test(
     'browse families and admitted children sort by localized displayed names',

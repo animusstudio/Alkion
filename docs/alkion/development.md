@@ -1,5 +1,7 @@
 # Alkion development and qualified driver handoff
 
+2026-11-11 · [Bilingual catalog discovery](../plans/2026-11-11-catalog-discovery.md) · Done.
+
 2026-11-09 · [UI declutter round 2](../plans/2026-11-09-ui-declutter-round-2.md) · Done.
 2026-11-09 · [Toast redesign](../plans/2026-11-09-toast-redesign.md) · Done.
 2026-11-09 · [Live workout declutter](../plans/2026-11-09-live-workout-declutter.md) · Done.

@@ -18,19 +18,28 @@ tests contain independently authored synthetic records only.
 
 The staging tool requires an explicit file and its reviewed SHA-256. The source
 digest admitted for the private catalog is
-`1b39508c85f7dbb946acb3423718c4691dc71be39dc6176f509ea006b5e98ef7`.
+`e7fe48a5c4bd2852c35c89363eb28a03894ba08efe59288c9d7c0198686856bb`.
 Its allowlisted projection digest is
-`b73ba40ff2dd280cc94889a8cd1ad823d9331b4b99db52cf854a73fed2ab6ec7`:
-147 families, 760 variants, four collections, eight measurement profiles,
-435 aliases, 942 scoped terms, 98 abbreviations, 31 anatomy nodes and no
+`08adcc0a2bead5ec734824f869b08d8089656b6f067e232fe70aca86a04a4a7a`:
+156 families, 771 variants, four collections, eight measurement profiles,
+436 aliases, 1,109 scoped terms, 99 abbreviations, 31 anatomy nodes and no
 equipment models. Catalog/search revisions are
-`2026-11-03-expansion.1` / `2026-11-03-expansion-search.1`.
+`2026-11-11-machine-synonyms.1` /
+`2026-11-11-machine-synonyms-search.1`.
 
-The 2026-11-03 refresh adds 26 variants and four families while preserving all
-734 existing variant identities and revisions. The browse sidecar preserves
-existing classifications and records the 26 additions as unresolved, with no
-inferred muscle memberships. This updates the private staging input only; it
-does not rebuild an app or include the corpus in public Git.
+The latest naming pass adds machine-scoped Vertical Traction, seated-machine
+Delts Machine and machine leg curling retrieval in both English and Italian
+interfaces. All 771 definitions, canonical titles and muscle claims are preserved.
+Manufacturer model identity and ambiguous translations remain separate work.
+
+The earlier 2026-11-11 refresh adds 11 variants and nine families while preserving all
+760 existing variant identities and revisions. The additions retain unknown
+muscle coverage and use the existing missing-artwork fallback where needed.
+The authoritative v2 muscle bundle covers 771 variants: 741 partial and 30
+unknown. Its legacy projection still covers the original 760; it does not
+supply muscle claims for the additions. No complete coverage is inferred.
+This updates the private staging input only; it does not include the corpus in
+public Git.
 
 Projection preserves the candidate's identity and contents and removes
 unadmitted fields; it does not regenerate IDs, infer equipment, translate names,
@@ -192,9 +201,17 @@ rebuilding rather than bypassing the guard. `make -C app verify-no-catalog-apk
 CATALOG_PUBLIC_APK=<apk>` checks that a public/no-input APK carries only the
 public README.
 
-English presentation remains English. Other current locales use eligible local
-names with English fallback; personal names stay verbatim. Search/index caches
-retain bundle, locale and profile identity.
+Supported English and Italian names, aliases, scoped terms and abbreviations
+are searchable in every interface locale. Locale affects ranking and
+presentation: built-in results use the localized canonical name, with English
+fallback, and searching by a synonym does not change that title. Explicit
+personal names stay verbatim. Execution qualifiers remain part of the identity
+and matching contract. Search/index caches retain bundle, locale and profile
+identity.
+
+The 2026-11-11 [acceptance record](acceptance.md) separates interactive Linux
+qualification from the Android software-emulator limitation. Guarded private APK
+builds do not establish owner-device behavior or authorize publication.
 
 Staging regression tests cover admitted projection, digest mismatch, newer
 schema, excluded nested data, unknown muscle claims, symlinks, tampering, stale

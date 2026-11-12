@@ -183,6 +183,10 @@ class _Ranked {
 /// locale, bundle or effective personal vocabulary change; identity fences async
 /// callers without a global cache or recents shared between profiles.
 class CatalogIndex {
+  /// Built-in titles use localized canonical names, with explicit personal
+  /// names taking precedence. Persist this only for a newly selected name.
+  static const labelPolicy = 'localized-canonical/1';
+
   CatalogIndex(
     this.bundle, {
     this.locale = 'en',
@@ -216,7 +220,7 @@ class CatalogIndex {
         bundle.browse?.classificationRevision,
         bundle.browseUnavailableReason,
         catalogNormalizationPolicy,
-        'labels-stable-identity-v2',
+        'bilingual-canonical-labels-v3',
         locale,
         profileId,
         generation,
@@ -265,7 +269,11 @@ class CatalogIndex {
       );
     }
     for (final term in terms) {
-      if (term.locale != 'en' && term.locale != locale) continue;
+      // Built-in vocabulary is bilingual independently of presentation. Personal
+      // aliases keep their existing profile and interface-locale admission above.
+      if (term.locale != 'en' && term.locale != 'it' && term.locale != locale) {
+        continue;
+      }
       if (bundle.entity(term.kind, term.targetId) == null) {
         throw const CatalogFormatException('Personal alias target unavailable');
       }
@@ -274,23 +282,6 @@ class CatalogIndex {
         term.targetId,
       ).where((id) => term.selector.matches(bundle.variants[id]!)).toSet();
       final label = _Label(term, ids);
-      if (!term.qualifier &&
-          term.source != 'canonical' &&
-          term.source != 'personal' &&
-          term.source != 'scoped_terms' &&
-          _eligibleDisplay(term)) {
-        for (final id in ids) {
-          final direct = term.kind == 'variant' && term.targetId == id;
-          // Broad aliases stay retrieval-only except the familiar RDL name.
-          final familiarAcronym =
-              term.kind == 'family' &&
-              term.targetId == bundle.variants[id]!.familyId &&
-              term.text == 'RDL';
-          if (direct || familiarAcronym) {
-            (_displayCandidates[id] ??= <_Label>[]).add(label);
-          }
-        }
-      }
       (_exact[label.key] ??= <_Label>[]).add(label);
       if ((term.source == 'aliases' || term.source == 'personal') &&
           (term.hasSelector || term.kind == 'variant')) {
@@ -337,7 +328,6 @@ class CatalogIndex {
   final String? profileId;
   late final String identity;
   final _familyMembers = <String, Set<String>>{};
-  final _displayCandidates = <String, List<_Label>>{};
   final _targetMembers = <(String, String), Set<String>>{};
   final _normalizedNames = <String, String>{};
   // Bound retained query snapshots to this immutable vocabulary/profile index.
@@ -418,20 +408,7 @@ class CatalogIndex {
     // Personal names retain their exact text across interface locale changes.
     final personal = _personalNames['$kind:$id'];
     if (personal != null) return personal;
-    if (kind != 'variant') return canonical;
-    final candidates = List<_Label>.of(_displayCandidates[id] ?? const []);
-    candidates.sort((a, b) {
-      final localA = a.term.locale == locale, localB = b.term.locale == locale;
-      if (localA != localB) return localA ? -1 : 1;
-      final length = b.words.length.compareTo(a.words.length);
-      if (length != 0) return length;
-      return a.term.id.compareTo(b.term.id);
-    });
-    if (candidates.isEmpty) return canonical;
-    final familiar = candidates.first.term.text;
-    return catalogNormalize(familiar) == catalogNormalize(canonical)
-        ? canonical
-        : familiar;
+    return canonical;
   }
 
   /// A self-contained execution name for surfaces without a separate subtitle.
@@ -468,17 +445,6 @@ class CatalogIndex {
       return variant.names[locale] ?? variant.names['en']!;
     }
     return '$label · $distinction';
-  }
-
-  bool _eligibleDisplay(CatalogTerm t) {
-    if (t.locale == locale) return true;
-    if (t.locale != 'en') return false;
-    // Local canonical names take precedence. English aliases may be displayed
-    // internationally only when reviewed explicitly or an uppercase acronym.
-    return locale == 'en' ||
-        t.displayLocales.contains(locale) ||
-        (t.source != 'canonical' &&
-            RegExp(r'^[A-Z][A-Z0-9]{1,7}$').hasMatch(t.text));
   }
 
   Set<String> _intent(List<String> words) {
@@ -784,6 +750,7 @@ class CatalogIndex {
       int tier, {
       bool direct = false,
       bool canonical = false,
+      bool localized = false,
       List<String>? recognized,
       Set<String>? admitted,
     }) {
@@ -807,6 +774,7 @@ class CatalogIndex {
           tier,
           direct ? 0 : 1,
           canonical ? 0 : 1,
+          localized ? 0 : 1,
           if (words.isEmpty || key.length == 1) ...[
             _normalizedLabel(kind, id),
             labelFor(kind, id),
@@ -854,6 +822,7 @@ class CatalogIndex {
               0,
               direct: true,
               canonical: t.source == 'canonical',
+              localized: t.locale == locale,
               admitted: label.ids.intersection(allowed),
             );
           }

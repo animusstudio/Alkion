@@ -420,22 +420,29 @@ void main() {
 
     test('two un-awaited deliveries are serialised in arrival order', () async {
       final gate = Completer<void>();
+      final firstRenderEntered = Completer<void>();
       var inRender = 0;
       h.onRender = (_) async {
         inRender++;
         if (inRender == 1) {
-          // The second delivery must not have journaled yet.
-          expect(await h.entries(), hasLength(1));
+          firstRenderEntered.complete();
           await gate.future;
         }
       };
       final first = h.deliver(_add(_payload()));
       h.now = _t0.add(const Duration(milliseconds: 300));
       final second = h.deliver(_add(_payload()));
-      await pumpEventQueue();
-      expect(inRender, 1);
-      gate.complete();
-      expect(await Future.wait([first, second]), [
+      late List<NotificationBackgroundOutcome> outcomes;
+      try {
+        await firstRenderEntered.future.timeout(h.platformTimeout);
+        expect(inRender, 1);
+        // The second delivery must not journal while the first render is held.
+        expect(await h.entries(), hasLength(1));
+      } finally {
+        gate.complete();
+        outcomes = await Future.wait([first, second]);
+      }
+      expect(outcomes, [
         NotificationBackgroundOutcome.rendered,
         NotificationBackgroundOutcome.rendered,
       ]);
