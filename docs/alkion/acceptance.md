@@ -6,6 +6,16 @@ observed: 2026-11-11
 
 # Alkion integrated acceptance
 
+## Catalog integration refresh — 2026-11-12
+
+Integrated published UI updates from `4623c238` at `967aede9`. Focused overlap
+checks pass 314 tests, analysis reports zero issues, and nine actual-bundle tests
+pass: 242 naming/control and 512 discovery probes, with preserved definitions,
+saved bindings and completed history. Generated translations were refreshed
+through the normal build target after the merge; no product fix was needed.
+Earlier full-suite results remain dated below; fresh exact-head CI is required
+before merging this integrated branch. Private APK/device boundaries are unchanged.
+
 ## Catalog publication qualification — 2026-11-11
 
 The integrated catalog branch includes current public main and the latest private

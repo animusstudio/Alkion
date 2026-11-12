@@ -146,3 +146,7 @@ the three optional-control expectations fixed here. Recheck affected catalog,
 binding, prefill and completion tests locally, then require the full suite in
 fresh exact-head CI before merging. Rebuild the private APK from the integrated
 source; retain earlier evidence as dated results. No new product scope.
+
+At `967aede9`: 314 focused tests and nine actual-bundle tests PASS, zero skips;
+analysis zero issues. Refreshed ignored generated translations after integration.
+No product changes needed; full-suite qualification is the fresh exact-head CI.
