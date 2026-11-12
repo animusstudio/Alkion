@@ -16,6 +16,12 @@ through the normal build target after the merge; no product fix was needed.
 Earlier full-suite results remain dated below; fresh exact-head CI is required
 before merging this integrated branch. Private APK/device boundaries are unchanged.
 
+The first refreshed CI run passed 3,820 tests and failed one notification-test
+readiness assumption. That test now waits for actual first-render entry, keeps
+the serialization assertions and always releases its gate. The 134 focused
+notification tests pass, with zero analysis issues. No application code changed;
+the next exact-head CI run supplies full-suite qualification.
+
 ## Catalog publication qualification — 2026-11-11
 
 The integrated catalog branch includes current public main and the latest private

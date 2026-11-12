@@ -150,3 +150,7 @@ source; retain earlier evidence as dated results. No new product scope.
 At `967aede9`: 314 focused tests and nine actual-bundle tests PASS, zero skips;
 analysis zero issues. Refreshed ignored generated translations after integration.
 No product changes needed; full-suite qualification is the fresh exact-head CI.
+
+CI exposed one notification test's event-queue timing assumption (3,820 pass,
+one fail). Replace it with bounded first-render signaling and cleanup; 134 focused
+tests PASS and analysis clean. Runtime inputs unchanged; rerun exact-head CI.
