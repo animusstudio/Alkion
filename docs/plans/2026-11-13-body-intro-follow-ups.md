@@ -64,7 +64,12 @@ The 3D body plays one 8 s intro turn per view and then renders only on demand.
   - All are fixed in the next commit: the Kotlin host forwards a boolean `intro`, the node check
     asserts that forwarding, and the runtime doc is updated.
   - Fix re-check (Sonnet): PASS.
+- **Integrated:** published main `1bab7ca` merged at `127d1e4` (docs only). The full suite gives +3812 ~3
+  −3; the failures are the three inherited `catalog_metric_controls_test` cases.
+  `node app/tool/check_character_body.mjs` passes and analyze is clean.
+- **Private Dev APK `c5e6d0ea…`** built at `ee4b33b` (catalog hashes `4ff35c33…`, `3a3d197d…`) and
+  installed in place on the A024. The owner device check is pending.
 
 ## Next
 
-T1.
+Owner device check, then the outgoing review and publication.
