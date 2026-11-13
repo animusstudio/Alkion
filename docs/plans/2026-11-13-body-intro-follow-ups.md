@@ -61,8 +61,9 @@ The 3D body plays one 8 s intro turn per view and then renders only on demand.
     turn again. Host tests missed it because they inject the field directly.
   - The minors are a stale `character-body-runtime.md`, the one-frame partly-visible snap
     (documented above) and the reload snap (documented above).
-  - Both are fixed in the next commit: the Kotlin host forwards a boolean `intro`, the node check
+  - All are fixed in the next commit: the Kotlin host forwards a boolean `intro`, the node check
     asserts that forwarding, and the runtime doc is updated.
+  - Fix re-check (Sonnet): PASS.
 
 ## Next
 
