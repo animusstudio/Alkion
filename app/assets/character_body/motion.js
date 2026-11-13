@@ -12,7 +12,10 @@ export function introYaw(from,progress){const p=Math.max(0,Math.min(1,progress))
  * paused. arm() asks for one intro: the next drawn frame starts it at the current
  * yaw when it may animate, and otherwise drops it (reduced motion, paused). A
  * running intro ends for good when the view hides, pauses, turns reduced or
- * stops; it never resumes or catches up. Otherwise frames run only while dirty.
+ * stops; it never resumes or catches up. Ended because the view cannot draw
+ * (hidden or stopped), it returns to its start yaw, so the next appearance never
+ * shows a mid-turn angle; a pause or reduced motion while visible keeps the yaw
+ * on screen. Otherwise frames run only while dirty.
  */
 export class MotionLoop{
  constructor(state,draw,{request:request=callback=>requestAnimationFrame(callback),cancel:cancel=handle=>cancelAnimationFrame(handle)}={}){this.state=state;this.draw=draw;this.request=request;this.cancel=cancel;this.handle=null;this.dirty=false;this.armed=false;this.intro=null;this.tick=this.tick.bind(this);}
@@ -25,9 +28,11 @@ export class MotionLoop{
   if(this.intro&&!canAnimate(this.state))this.intro=null;
   if(this.dirty||this.armed||this.intro){if(this.handle===null)this.handle=this.request(this.tick);}else this.stop();
  }
- stop(){if(this.handle!==null)this.cancel(this.handle);this.handle=null;this.intro=null;}
+ stop(){if(this.handle!==null)this.cancel(this.handle);this.handle=null;this.unseen();}
+ /** Ends the intro out of sight: back to its start yaw for the next drawn frame. */
+ unseen(){if(this.intro){this.state.yaw=this.intro.from;this.dirty=true;}this.intro=null;}
  tick(now){
-  this.handle=null;if(!canDraw(this.state)){this.intro=null;return;}
+  this.handle=null;if(!canDraw(this.state)){this.unseen();return;}
   const animate=canAnimate(this.state),intro=this.intro;
   if(this.armed){this.armed=false;if(animate){this.intro={from:this.state.yaw,elapsed:0,previous:now};this.dirty=true;}}
   else if(intro&&animate){

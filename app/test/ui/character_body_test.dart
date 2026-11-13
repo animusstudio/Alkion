@@ -543,4 +543,88 @@ void main() {
       TargetPlatform.android,
     }),
   );
+
+  testWidgets('the intro start is reported once per mount, only when it runs', (
+    tester,
+  ) async {
+    CharacterBody.debugForceAndroid = true;
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() {
+      CharacterBody.debugForceAndroid = false;
+      debugDefaultTargetPlatformOverride = null;
+    });
+    final messenger = tester.binding.defaultBinaryMessenger;
+    int? view;
+    messenger.setMockMethodCallHandler(SystemChannels.platform_views, (
+      call,
+    ) async {
+      if (call.method == 'create') view = (call.arguments as Map)['id'] as int;
+      if (call.method == 'resize') {
+        return {
+          'width': (call.arguments as Map)['width'],
+          'height': (call.arguments as Map)['height'],
+        };
+      }
+      return call.method == 'create' ? 1 : null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(
+        SystemChannels.platform_views,
+        null,
+      ),
+    );
+    var started = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Center(
+          child: SizedBox(
+            width: 128,
+            height: 212,
+            child: CharacterBody(
+              style: CharacterBodyStyle.male,
+              scores: const {},
+              neutral: Colors.white,
+              accent: Colors.orange,
+              background: Colors.black,
+              brightness: Brightness.dark,
+              visible: true,
+              reducedMotion: false,
+              compact: true,
+              controller: CharacterBodyController()..resume(),
+              onIntroStarted: () => started++,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    Future<void> report({Object? intro}) async {
+      final done = Completer<void>();
+      messenger.handlePlatformMessage(
+        'dev.animusstudio.alkion/character-body/$view',
+        const StandardMethodCodec().encodeMethodCall(
+          MethodCall('status', {
+            'version': 5,
+            'status': 'ready',
+            'yaw': 0.5,
+            'intro': ?intro,
+          }),
+        ),
+        (_) => done.complete(),
+      );
+      await done.future;
+      await tester.pump();
+    }
+
+    // Loading, still and older reports without the flag never count.
+    await report();
+    await report(intro: false);
+    await report(intro: 1);
+    expect(started, 0);
+    await report(intro: true);
+    await report(intro: true);
+    expect(started, 1, reason: 'once per mount');
+    await tester.pumpWidget(const SizedBox());
+    debugDefaultTargetPlatformOverride = null;
+  });
 }

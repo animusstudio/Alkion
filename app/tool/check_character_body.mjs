@@ -235,10 +235,11 @@ console.log('PASS: protocol v5, exact style dispatch, one latest draw/frame, no 
  const update=patch=>window.AlkionBody.update(current={...current,...patch});
  // A fresh view that asks for autoplay turns once from its current yaw, then stops.
  update({});await flush();frame();assert.equal(draws,1);near(lastYaw,.5);
+ assert.equal(events.at(-1).intro,true,'The first intro frame reports the turn');
  const yaws=[];for(let t=0;t<INTRO_MS;t+=16){frame();yaws.push(lastYaw);}
  assert.ok(yaws.some(yaw=>Math.abs(yaw-(.5+Math.PI))<.01),'Half way the figure faces away');
  assert.equal(lastYaw,.5,'The intro ends exactly where it started');assert.equal(raf.size,0,'No frame after the intro');
- assert.equal(events.at(-1).yaw,.5,'The intro end reports the resting yaw');
+ assert.equal(events.at(-1).yaw,.5,'The intro end reports the resting yaw');assert.equal(events.at(-1).intro,false);
  const settledDraws=draws;assert.equal(run(5000),0,'Idle requests no frames');assert.equal(draws,settledDraws);
  // Identical displays, as each Flutter rebuild sends, stay idle.
  for(let i=0;i<60;i++)update({});assert.equal(raf.size,0);
@@ -250,12 +251,18 @@ console.log('PASS: protocol v5, exact style dispatch, one latest draw/frame, no 
  window.AlkionBody.hostPaused(true);window.AlkionBody.hostPaused(false);assert.equal(run(2000),1);
  resized();assert.equal(run(2000),1,'A resize draws once');
  // A new lease (fresh mount, retry) re-arms; hiding mid-intro ends it for good.
- window.AlkionBody.reset(1);update({revision:3});await flush();const leaseStart=lastYaw;
+ window.AlkionBody.reset(1);update({revision:3});await flush();frame();const leaseStart=lastYaw;
  assert.ok(run(1000)>30,'The new lease turns');assert.ok(lastYaw!==leaseStart);
- update({visible:false});update({visible:true});assert.equal(run(INTRO_MS),1,'An interrupted intro never resumes');
+ const hiddenDraws=draws;update({visible:false});assert.equal(draws,hiddenDraws,'Hiding never draws');
+ update({visible:true});assert.equal(run(INTRO_MS),1,'An interrupted intro never resumes');
+ assert.equal(lastYaw,leaseStart,'A hidden intro returns to its start yaw');
+ assert.equal(events.at(-1).yaw,leaseStart,'The snapped yaw reaches Dart');assert.equal(events.at(-1).intro,false);
+ window.AlkionBody.reset(6);update({revision:12});await flush();frame();const hostStart=lastYaw;run(1000);
+ window.AlkionBody.hostPaused(true);window.AlkionBody.hostPaused(false);assert.equal(run(INTRO_MS),1);assert.equal(lastYaw,hostStart,'A host pause snaps back too');
  // A pause (drag start) ends the intro too; the drag then turns on demand only.
- window.AlkionBody.reset(2);update({revision:4});await flush();run(1000);
+ window.AlkionBody.reset(2);update({revision:4});await flush();run(1000);const pausedAt=lastYaw;
  update({paused:true,revision:5});assert.equal(raf.size,0);update({turn:.4,revision:6});assert.equal(run(INTRO_MS),1);
+ near(lastYaw,(pausedAt+.2)%(Math.PI*2));// A visible pause keeps the shown angle; the drag turns from it.
  // An explicit resume asks for one more turn; it still ends on its own.
  update({paused:false,revision:7});assert.ok(run(INTRO_MS+100)>INTRO_MS/16-10);assert.equal(raf.size,0);
  // Reduced motion: the new lease draws once and gets no intro, not even later.
@@ -266,7 +273,7 @@ console.log('PASS: protocol v5, exact style dispatch, one latest draw/frame, no 
  // An intro armed while hidden waits for the first appearance.
  window.AlkionBody.reset(5);update({paused:false,visible:false,revision:11});await flush();assert.equal(run(1000),0);
  update({visible:true});await flush();assert.ok(run(1000)>30,'The intro starts when the view first appears');
- console.log('PASS: one eased intro turn per lease, then no idle frames; drags draw on demand; hide/show, pause and reduced motion never replay it');
+ console.log('PASS: one eased intro turn per lease, then no idle frames; drags draw on demand; hide/show, pause and reduced motion never replay it; a hidden intro returns to its start');
 }
 
 // Exact retained-pixel addressing (WebGL bottom-up), including neutral and

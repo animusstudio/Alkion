@@ -22,7 +22,7 @@ function summarize(now){
  timing.n=0;timing.at=0;timing.frames=0;timing.msgs=0;timing.gl=0;timing.read=0;timing.compose=0;
 }
 function report(status){
- window.AlkionNative?.postMessage(JSON.stringify({version:protocolVersion,status,yaw:state.yaw,command,turn,revision:input?.revision??0,frames,totalMs:round(totalMs),maxMs:round(maxMs),loadMs:round(loadMs),lease,...stages,...timing.summary,...(input?.interaction?.enabled&&rendered?rendered:{})}));
+ window.AlkionNative?.postMessage(JSON.stringify({version:protocolVersion,status,yaw:state.yaw,intro:loop.turning,command,turn,revision:input?.revision??0,frames,totalMs:round(totalMs),maxMs:round(maxMs),loadMs:round(loadMs),lease,...stages,...timing.summary,...(input?.interaction?.enabled&&rendered?rendered:{})}));
 }
 // A frame's pick identity is published only once its pixels have landed: the
 // renderer reads back asynchronously, so poll across tasks (fence status
