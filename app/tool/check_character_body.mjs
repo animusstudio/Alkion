@@ -24,7 +24,7 @@ assert.ok(regionProjectionGLSL.indexOf('if(original>.5/255.0)return original;')<
 const native=readFileSync(new URL('../android/app/src/main/kotlin/dev/animusstudio/alkion/CharacterBodyView.kt',import.meta.url),'utf8');
 const nativeKeys=[...native.match(/val muscles = setOf\(([^)]+)\)/)[1].matchAll(/"([a-z]+)"/g)].map(m=>m[1]);
 assert.deepEqual(nativeKeys,regions);assert.match(native,/map\["version"\] != BodyPickGuard\.VERSION/);assert.ok(native.includes('BodyPickGuard.view(view)'));
-assert.ok(native.includes('"regions.js"'));assert.ok(!/"version" to [23]\b|"version"\) != [23]\b/.test(native));
+assert.ok(native.includes('"regions.js"'));assert.ok(native.includes('if (event.optBoolean("intro", false)) safe["intro"] = true'),'The native host forwards the intro flag to Dart');assert.ok(!/"version" to [23]\b|"version"\) != [23]\b/.test(native));
 assert.ok(native.includes('if (BuildConfig.DEBUG || BuildConfig.BODY_TIMING) Log.i(')&&!/[^|] Log\.i\("AlkionBody"/.test(native.replace('if (BuildConfig.DEBUG || BuildConfig.BODY_TIMING) Log.i("AlkionBody"','')),'Body timing logs only in debug or the explicit timing build');
 const gradle=readFileSync(new URL('../android/app/build.gradle.kts',import.meta.url),'utf8');
 assert.match(gradle,/buildConfigField\("boolean", "BODY_TIMING", \(privateCatalogDev &&\s+providers\.environmentVariable\("ALKION_BODY_TIMING"\)\.orNull == "1"\)\.toString\(\)\)/);

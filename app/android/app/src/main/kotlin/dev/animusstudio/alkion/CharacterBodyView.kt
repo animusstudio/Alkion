@@ -234,6 +234,8 @@ internal class CharacterBodyView(
                 val turn = event.optDouble("turn", -1.0)
                 val revision = event.optDouble("revision", -1.0)
                 val safe = mutableMapOf<String, Any>("version" to BodyPickGuard.VERSION, "status" to status, "yaw" to yaw)
+                // Whether the intro turn is running; Dart spends a figure's intro on it.
+                if (event.optBoolean("intro", false)) safe["intro"] = true
                 if (command.isFinite() && command >= 0 && command <= 9007199254740991.0 &&
                     command == Math.floor(command) && turn.isFinite() && turn >= 0 && turn < Math.PI * 2 &&
                     revision.isFinite() && revision >= 0 && revision <= 9007199254740991.0 && revision == Math.floor(revision)) {
