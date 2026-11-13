@@ -67,6 +67,8 @@ return to the same angle. Status echoes `command`, `turn` and `revision`; Dart
 accepts yaw telemetry only for its current triple, so delayed reports cannot
 overwrite a newer gesture. The intro reports at most once a second and once
 more on its last frame; relative drag does not depend on more frequent reports.
+Each status also carries `intro`, true while the intro turns; the Android host
+forwards only that boolean.
 
 Dart pipelines displays: the latest state leaves at most once per frame, in a
 post-frame callback after that frame's input and animation, without awaiting
@@ -97,12 +99,17 @@ holds still, so idle artwork requests no frames (`assets/character_body/motion.j
   the controller is unpaused, or an explicit `resume()`. The next drawn frame
   starts it when it may animate; under reduced motion or paused it is dropped.
 - Hiding, pausing (a drag start), reduced motion, failure or a new load end a
-  running intro for good. Hiding and showing the same lease (route cover, app
-  lifecycle) never re-arms it. After it, frames run only for changes: drags,
+  running intro for good. When it ends because the view cannot draw (hidden,
+  failed, reloading), the yaw returns to the intro's start, so the next
+  appearance faces where the turn began; a pause or reduced motion while
+  visible keeps the shown angle. Hiding and showing the same lease (route
+  cover, app lifecycle) never re-arms it. After it, frames run only for changes: drags,
   view commands, display changes and resizes, each drawing once per frame.
 - Callers unmount hidden figures (pager slides, tab switches), so `BodyFigure`
   remembers the turn: once per figure, and once per `introKey` in the route's
-  `PageStorage`. Today's split pager, the Split volume card and the day view each
+  `PageStorage`. The key's mark is written only when a status reports `intro`
+  (`CharacterBody.onIntroStarted`), so a figure disposed before it ever turned
+  leaves the turn to the next mount. Today's split pager, the Split volume card and the day view each
   pass a key, so returning to them stays still; the workload sheet is a new view
   and turns once each time it opens. Explore opens paused and never turns.
 

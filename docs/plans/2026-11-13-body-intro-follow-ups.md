@@ -19,11 +19,16 @@ The 3D body plays one 8 s intro turn per view and then renders only on demand.
 
 - `assets/character_body/motion.js`:
   - When the intro is cancelled because the view cannot draw (hidden, not visible or stopped),
-    the yaw returns to the intro's start and the next drawn frame shows it.
+    the yaw returns to the intro's start and the next drawn frame shows it. This includes a
+    reload (style change or retry), which clears the canvas anyway. A view that hides while
+    partly on screen keeps its last pixels until that next frame, so the snap shows there as a
+    single frame.
   - A pause (drag start) or reduced motion while the figure is visible keeps the current yaw,
     because a visible jump would be worse.
 - `assets/character_body/runtime.js`: each status report carries `intro`, which is true while the
-  intro is turning.
+  intro is turning. The Android host (`CharacterBodyView.kt`) whitelists status fields, so it
+  forwards that boolean too.
+- `docs/alkion/character-body-runtime.md` describes the snap and the `intro` report.
 - `ui/character_body.dart`: `CharacterBody.onIntroStarted` fires once per mount, on the first
   report with `intro: true`.
 - `ui/body_figure.dart`:
@@ -50,7 +55,14 @@ The 3D body plays one 8 s intro turn per view and then renders only on demand.
 
 ## Task state
 
-- **T1:** implementation (coordinator), then an independent review (Sonnet `high`).
+- **T1:** implementation (coordinator) `9f3782e`.
+  - Independent review (Sonnet `high`): FAIL, with one blocker. The Android host's status whitelist
+    dropped `intro`, so on a device `onIntroStarted` would never fire and every keyed mount would
+    turn again. Host tests missed it because they inject the field directly.
+  - The minors are a stale `character-body-runtime.md`, the one-frame partly-visible snap
+    (documented above) and the reload snap (documented above).
+  - Both are fixed in the next commit: the Kotlin host forwards a boolean `intro`, the node check
+    asserts that forwarding, and the runtime doc is updated.
 
 ## Next
 
