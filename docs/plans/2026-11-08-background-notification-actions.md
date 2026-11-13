@@ -1,8 +1,10 @@
 # Background notification actions: +30s and Skip rest
 
 Date: 2026-11-08, revised 2026-11-09 after design review. Lane: **Full**.
-Status: **Approved** by the owner on 2026-11-09, after a design review,
-fixes and a re-check.
+Status: **Done**. Published 2026-11-11 after device acceptance on the A024
+(OG3 in three states, the OG4 killed-state row; the owner waived the rest).
+Approved by the owner on 2026-11-09, after a design review, fixes and a
+re-check.
 Parent: [development](../alkion/development.md).
 Specification: [background notification actions](../specs/2026-11-08-background-notification-actions.md).
 Baseline: `458aac6`. Branch: `feat/background-notification-actions-20261108`.
@@ -49,7 +51,9 @@ directory and dated 2026-11-08.
     no debounce.
   - Ghosts are cancelled on open when there is no active workout.
   - The label is "Skip rest".
-- **OG3 (device bar, decides on the fallback):** run a private Dev APK built
+- **OG3 (device bar, decides on the fallback):** passed on the A024 on
+  2026-11-11 in the foreground, backgrounded and swiped-from-recents states;
+  design (a) stands. The owner waived the other states. Run a private Dev APK built
   with `ALKION_NOTIFICATION_TRACE` on the owner's phone. Record the Android
   version and patch level in the `acceptance.md` entry. A release-mode APK
   isn't `run-as` debuggable, so the evidence is only logcat markers and the
@@ -84,7 +88,8 @@ directory and dated 2026-11-08.
     - the p90 from the physical tap to the visible change is 3 s or less;
     - any lost tap, or a missed p90, means the owner decides on a revised spec
       for fallback (c′).
-- **OG4 (device):**
+- **OG4 (device):** the killed-state row passed on 2026-11-11; the owner
+  waived the others.
   - The journal path is the same in both engines: a killed-state tap is
     applied at the next launch.
   - `DartPluginRegistrant` lets path_provider resolve in the handler.
@@ -319,5 +324,5 @@ are **serial** with respect to `main.dart` and `workout_notification.dart`.
 
 ## Next
 
-Independent review of the device fixes and T4, then the outgoing-range review
-and delivery after owner approval.
+Done. Published to public Alkion main as `e355efb` on 2026-11-11; the
+outgoing-range review passed (26 commits, 0 leak findings).
