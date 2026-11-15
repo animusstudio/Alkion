@@ -68,8 +68,8 @@ The 3D body plays one 8 s intro turn per view and then renders only on demand.
   −3; the failures are the three inherited `catalog_metric_controls_test` cases.
   `node app/tool/check_character_body.mjs` passes and analyze is clean.
 - **Private Dev APK `c5e6d0ea…`** built at `ee4b33b` (catalog hashes `4ff35c33…`, `3a3d197d…`) and
-  installed in place on the A024. The owner device check is pending.
+  installed in place on the A024. Owner device check: accepted (2026-11-15).
 
 ## Next
 
-Owner device check, then the outgoing review and publication.
+Outgoing review of everything after `1bab7ca`, then owner-approved publication.
