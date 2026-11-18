@@ -131,7 +131,7 @@ expectedSchemaDigest)`. IDs must be contiguous, at most 7:
 | 4 | Flexible prescriptions | `day_template_items.rir_policy TEXT`; `day_templates.is_active INTEGER DEFAULT 1` |
 | 5 | Catalog integration | Catalog bindings, tracking contexts and typed execution evidence |
 | 6 | Animus recovery | Server attachment G, immutable operation O, durable API intents, archives, finite stages and response evidence |
-| 7 | Animus attachment release | Capped, deduplicated released-attachment archive and a transient release lease; the attachment, intent and evidence retain triggers admit only a leased, unverified attachment |
+| 7 | Animus attachment release | Capped, deduplicated released-attachment archive and a transient release lease; the attachment, intent and evidence retain triggers admit deletion only under that lease, of a ready, never-archived attachment and its settled intents |
 
 Pass the same registry to `LocalStore.open(..., schema: registry)` on every open.
 Each appended migration supplies a independently verified resulting sqlite_master
