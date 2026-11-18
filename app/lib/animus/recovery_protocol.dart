@@ -11,6 +11,14 @@ final class AnimusRecoveryFailure implements Exception {
   String toString() => 'Animus recovery requires review';
 }
 
+/// This profile stays attached to another account: its access was verified, or
+/// it holds evidence, work or recovery state that cannot be released.
+final class AnimusAttachmentMismatch extends AnimusRecoveryFailure {
+  const AnimusAttachmentMismatch();
+  @override
+  String toString() => 'Animus profile is attached to another account';
+}
+
 /// A malformed refusal of a covered write: settled, never fenced or terminal.
 final class _UncertainRefusal implements Exception {
   const _UncertainRefusal();
@@ -154,7 +162,10 @@ final class DurableAnimusRecovery implements AnimusRecoveryPort {
   Future<RemoteExchange> _begin(Future<RemoteExchange> pending) async {
     try {
       return await pending;
-    } on StoreException {
+    } on StoreException catch (error) {
+      if (error.category == 'remote_attachment_mismatch') {
+        throw const AnimusAttachmentMismatch();
+      }
       throw const AnimusRecoveryFailure();
     }
   }

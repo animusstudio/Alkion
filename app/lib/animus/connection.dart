@@ -243,6 +243,11 @@ final class AnimusConnectionController extends ChangeNotifier {
           AnimusConnectionState.unavailable,
           AnimusConnectionIssue.verificationUnavailable,
         );
+      case AnimusProbeResult.differentAccount:
+        _publish(
+          AnimusConnectionState.unavailable,
+          AnimusConnectionIssue.accountChanged,
+        );
       case AnimusProbeResult.serviceUnavailable:
         _publish(
           AnimusConnectionState.unavailable,
