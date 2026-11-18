@@ -563,6 +563,201 @@ void main() {
     });
   }
 
+  AnimusHttpResponse refusal(
+    int status,
+    String contentType,
+    List<int> body, {
+    Map<String, String> extra = const {},
+  }) => AnimusHttpResponse(
+    statusCode: status,
+    headers: {'content-type': contentType, ...extra},
+    body: body,
+  );
+  final html = utf8.encode('<html><body>403 Forbidden</body></html>');
+  final sniffed = utf8.encode('{"error":"forbidden"}');
+
+  for (final (name, type, body) in [
+    ('sniffed text/plain JSON', 'text/plain; charset=utf-8', sniffed),
+    ('HTML', 'text/html', html),
+    ('invalid JSON', 'application/json', utf8.encode('{"error":')),
+    ('oversized', 'text/html', List.filled(100 * 1024, 0x61)),
+  ]) {
+    for (final status in [401, 403]) {
+      test(
+        '$name $status without a recovery signal is an ordinary discovery/read refusal with bounded evidence',
+        () async {
+          final denied = await protocol.discover(
+            (_) async => refusal(status, type, body),
+            () => true,
+          );
+          expect(denied.statusCode, status);
+          await discover();
+          final read = await protocol.exchange(
+            const RemoteApiRequest.read('definitions', g),
+            (_) async => refusal(status, type, body),
+            () => true,
+            (_) {},
+          );
+          expect(read.statusCode, status);
+          final state = await RemoteRecoveryRepository(store).state(scope.id);
+          expect(state.state, 'ready');
+          expect(state.generation, g);
+          await protocol.checkReady();
+          expect(
+            await store.getAll('SELECT * FROM animus_recovery_archives'),
+            isEmpty,
+          );
+          final kept = await store.getAll(
+            'SELECT body_bytes FROM animus_response_evidence WHERE http_status=?',
+            [status],
+          );
+          expect(kept.length, 2);
+          for (final row in kept) {
+            expect(
+              (row['body_bytes'] as List).cast<int>(),
+              body.take(refusalEvidenceLimit).toList(),
+            );
+          }
+        },
+      );
+    }
+  }
+
+  for (final path in ['action', 'status']) {
+    for (final (name, type, body) in [
+      ('sniffed text/plain JSON', 'text/plain; charset=utf-8', sniffed),
+      ('HTML', 'text/html', html),
+    ]) {
+      test(
+        'malformed $name 403 on $path settles uncertain: no fence, no terminal response, status stays queryable',
+        () async {
+          await discover();
+          final (op, action) = await attempted();
+          final request = path == 'action'
+              ? action
+              : RemoteApiRequest.status(op);
+          await expectLater(
+            protocol.exchange(
+              request,
+              (_) async => refusal(403, type, body),
+              () => true,
+              (_) {},
+            ),
+            throwsA(
+              isA<AnimusHttpFailure>().having(
+                (e) => e.kind,
+                'kind',
+                AnimusHttpFailureKind.invalidResponse,
+              ),
+            ),
+          );
+          expect(
+            (await RemoteRecoveryRepository(store).state(scope.id)).state,
+            'ready',
+          );
+          expect(
+            await store.getAll(
+              "SELECT * FROM animus_exchange_intents WHERE state<>'settled'",
+            ),
+            isEmpty,
+          );
+          final status = await protocol.exchange(
+            RemoteApiRequest.status(op),
+            (_) async => response({
+              'recovery_generation': g,
+              'recorded_operation_generation': g,
+            }),
+            () => true,
+            (_) {},
+          );
+          expect(status.statusCode, 200);
+        },
+      );
+    }
+  }
+
+  test(
+    'a well-formed JSON 403 on an action still returns the refusal to its caller',
+    () async {
+      await discover();
+      final (_, request) = await attempted();
+      final denied = await protocol.exchange(
+        request,
+        (_) async =>
+            response({'error': 'forbidden'}, status: 403, generation: null),
+        () => true,
+        (_) {},
+      );
+      expect(denied.statusCode, 403);
+      await protocol.checkReady();
+    },
+  );
+
+  for (final (name, headers) in [
+    (
+      'duplicate',
+      {'X-Hub-Recovery-Generation': g, 'x-hub-recovery-generation': g},
+    ),
+    ('malformed', {'x-hub-recovery-generation': 'not-a-generation'}),
+    ('unknown', {'x-hub-recovery-generation': unknownOperationGeneration}),
+    ('valid', {'x-hub-recovery-generation': g}),
+  ]) {
+    test('$name generation header on a 401/403 still fences', () async {
+      await expectLater(
+        protocol.discover(
+          (_) async => refusal(403, 'text/html', html, extra: headers),
+          () => true,
+        ),
+        recoveryFailure,
+      );
+      expect(
+        (await RemoteRecoveryRepository(store).state(scope.id)).ready,
+        false,
+      );
+    });
+  }
+
+  for (final (name, type, text) in [
+    ('sniffed', 'text/plain', '{"error":"recovery_required"}'),
+    ('HTML-labelled', 'text/html', '{"error":"recovery_unavailable"}'),
+    (
+      'duplicate-name',
+      'text/plain',
+      '{"error":"operation_recovery_required","error":"forbidden"}',
+    ),
+    (
+      'trailing-garbage',
+      'text/plain',
+      '{"error":"recovery_required"}<html></html>',
+    ),
+    (
+      'escaped',
+      'text/plain',
+      r'{"error":"forbidden","error":"recovery\u005frequired"}',
+    ),
+    ('too-deep', 'text/plain', '${'[' * 300}${']' * 300}'),
+  ]) {
+    test(
+      '$name recovery code on a 403 fences whatever its media type',
+      () async {
+        await discover();
+        await expectLater(
+          protocol.exchange(
+            const RemoteApiRequest.read('definitions', g),
+            (_) async => refusal(403, type, utf8.encode(text)),
+            () => true,
+            (_) {},
+          ),
+          recoveryFailure,
+        );
+        expect(
+          (await RemoteRecoveryRepository(store).state(scope.id)).ready,
+          false,
+        );
+      },
+    );
+  }
+
   test(
     'offline authored operations alone permit a fresh first binding',
     () async {
