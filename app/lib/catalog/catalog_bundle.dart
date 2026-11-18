@@ -479,8 +479,8 @@ class CatalogBundle {
             !measurement.containsKey(row['measurement_profile']) ||
             row['revision'] is! int ||
             row['revision'] < 1 ||
-            muscle == null ||
-            muscle['variant_revision'] != row['revision'] ||
+            (schemaVersion == 1 && muscle == null) ||
+            (muscle != null && muscle['variant_revision'] != row['revision']) ||
             facets.entries.any(
               (e) => !(vocabulary[e.key]?.contains(e.value) ?? false),
             )) {
@@ -499,7 +499,10 @@ class CatalogBundle {
         }
         final relationshipKeys = <String>{};
         final relationships =
-            catalogList(muscle['relationships'], 'relationships').map((r) {
+            catalogList(
+              muscle == null ? [] : muscle['relationships'],
+              'relationships',
+            ).map((r) {
               final relation = catalogObject(r, 'relationship');
               final role = catalogString(relation['role'], 'role');
               if (!['primary', 'secondary', 'stabilizer'].contains(role)) {
@@ -517,7 +520,7 @@ class CatalogBundle {
               }
               return CatalogMuscleRelationship(node, role);
             }).toList();
-        if (muscle['coverage'] == 'unknown' && relationships.isNotEmpty) {
+        if (muscle?['coverage'] == 'unknown' && relationships.isNotEmpty) {
           throw const CatalogFormatException(
             'Unknown muscle profile contains claims',
           );
@@ -531,8 +534,9 @@ class CatalogBundle {
           equipmentKind: row['equipment_kind'],
           facets: facets,
           measurementProfileKey: row['measurement_profile'],
-          muscleCoverage:
-              assessed?.profiles[row['id']]?.coverage ?? muscle['coverage'],
+          muscleCoverage: assessed == null
+              ? muscle!['coverage']
+              : assessed.profiles[row['id']]!.coverage,
           muscleRelationships: assessed == null
               ? relationships
               : [
@@ -546,7 +550,8 @@ class CatalogBundle {
                 ],
         );
       }
-      if (variants.length != muscles.length ||
+      if ((schemaVersion == 1 && variants.length != muscles.length) ||
+          muscles.keys.any((id) => !variants.containsKey(id)) ||
           families.isEmpty ||
           variants.isEmpty ||
           families.keys.any(

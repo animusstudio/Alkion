@@ -195,15 +195,24 @@ void main() {
   test('EN IT DE ES policy separates retrieval and visible naming', () {
     final b = bundle();
     final en = CatalogIndex(b), it = CatalogIndex(b, locale: 'it');
-    expect(en.search('Lento avanti').strict, isEmpty);
+    expect(
+      en.search('Lento avanti').variantIds,
+      it.search('Lento avanti').variantIds,
+    );
     expect(
       it.search('Lento avanti').rows.first.label,
       'Distensioni sopra la testa',
     );
-    expect(it.search('RDL').strict.first.label, 'Lento avanti');
+    expect(
+      it.search('RDL').strict.first.label,
+      'Distensioni in piedi con bilanciere',
+    );
     for (final locale in ['de', 'es']) {
       final i = CatalogIndex(b, locale: locale);
-      expect(i.search('Lento avanti').strict, isEmpty);
+      expect(
+        i.search('Lento avanti').variantIds,
+        en.search('Lento avanti').variantIds,
+      );
       expect(i.search('Shoulder press').rows.single.label, 'Shoulder press');
       expect(
         i.variantLabel(b.variants.values.first.id),

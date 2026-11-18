@@ -565,7 +565,9 @@ final class CatalogMuscleBundle {
           catalogCanonicalJson(a['scope_ref']) !=
               catalogCanonicalJson(p['scope_ref']) ||
           !actors.containsKey(a['researcher_id']) ||
-          !actors.containsKey(a['reconciler_id'])) {
+          (a['reconciler_id'] == null
+              ? a['assessment_status'] != 'pending'
+              : !actors.containsKey(a['reconciler_id']))) {
         throw const CatalogFormatException('Invalid assessment binding');
       }
       final scopeRef = catalogObject(p['scope_ref'], 'scope ref'),
@@ -757,12 +759,17 @@ final class CatalogMuscleBundle {
             ? null
             : catalogObject(old['payload'], 'history')['previous_profile'];
       }
-      if (baseline.length != 1 ||
-          terminalBaseline == null ||
-          catalogCanonicalJson(terminalBaseline) !=
-              catalogCanonicalJson(baseline.single) ||
-          terminalBaseline['id'] != p['id'] ||
-          terminalBaseline['revision'] != revision) {
+      // Executions introduced in v2 have no v1 row. Their validated lineage
+      // terminates at their first v2 revision rather than a fabricated baseline.
+      final bornInV2 =
+          baseline.isEmpty && terminalBaseline == null && revision == 1;
+      if (!bornInV2 &&
+          (baseline.length != 1 ||
+              terminalBaseline == null ||
+              catalogCanonicalJson(terminalBaseline) !=
+                  catalogCanonicalJson(baseline.single) ||
+              terminalBaseline['id'] != p['id'] ||
+              terminalBaseline['revision'] != revision)) {
         throw const CatalogFormatException('Incomplete or changed v1 baseline');
       }
       final selectedClaims = [for (final id in usedClaims) claims[id]!];

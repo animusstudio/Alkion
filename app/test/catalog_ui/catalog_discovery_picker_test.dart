@@ -519,7 +519,7 @@ void main() {
   });
 
   testWidgets(
-    'family-open typo suggestions retain shared familiar-name distinctions',
+    'family-open alias typo suggestions retain canonical execution distinctions',
     (tester) async {
       final state = discoveryState(sharedFamiliar: true);
       addTearDown(state.dispose);
@@ -551,8 +551,8 @@ void main() {
       await tester.pumpAndSettle();
       final standing = tester.widget<CatalogPickerRow>(choice(fixtureId(14)));
       final seated = tester.widget<CatalogPickerRow>(choice(fixtureId(15)));
-      expect(standing.label, 'Lento avanti');
-      expect(seated.label, 'Lento avanti');
+      expect(standing.label, 'Distensioni in piedi con bilanciere');
+      expect(seated.label, 'Distensioni sedute con manubri');
       expect(standing.subtitle, contains('Bilanciere'));
       expect(seated.subtitle, contains('Manubri'));
       expect(standing.subtitle, isNot(seated.subtitle));

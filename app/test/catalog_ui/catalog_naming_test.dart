@@ -17,7 +17,7 @@ import '../support/screen_harness.dart';
 
 void main() {
   testWidgets(
-    'query changes cannot rename shared familiar executions downstream',
+    'query changes preserve canonical execution names across downstream surfaces',
     (tester) async {
       final h = ScreenHarness();
       await h.open(tester, seed: (_) async {});
@@ -44,14 +44,20 @@ void main() {
         'standing',
       ]) {
         state.remember(standing, locale: 'it', query: query);
-        expect(state.label(standing, 'it', query: query), 'Lento avanti');
+        expect(
+          state.label(standing, 'it', query: query),
+          'Distensioni in piedi con bilanciere',
+        );
         expect(
           state.identifyingLabel(standing, 'it'),
-          'Lento avanti · Bilanciere',
+          'Distensioni in piedi con bilanciere',
         );
-        expect(state.identifyingLabel(sitting, 'it'), 'Lento avanti · Manubri');
+        expect(
+          state.identifyingLabel(sitting, 'it'),
+          'Distensioni sedute con manubri',
+        );
       }
-      expect(state.label(setup, 'it'), 'Lento avanti · Bilanciere');
+      expect(state.label(setup, 'it'), 'Distensioni in piedi con bilanciere');
       expect(state.distinction(setup, 'it'), 'La mia macchina 💪');
       final custom = CatalogChoice.custom('Il mio nome esatto 💪', 'load_reps');
       for (final locale in ['en', 'it', 'de', 'es']) {
@@ -64,8 +70,8 @@ void main() {
         final second = await state.materialize(sitting, repo, locale: 'it');
         final same = await state.materialize(setup, repo, locale: 'en');
         expect(same.id, first.id);
-        expect(first.name, 'Lento avanti · Bilanciere');
-        expect(second.name, 'Lento avanti · Manubri');
+        expect(first.name, 'Distensioni in piedi con bilanciere');
+        expect(second.name, 'Distensioni sedute con manubri');
         expect((await repo.all()).length, 2);
         final days = DayTemplateRepository.local(h.database);
         await days.saveDay(
@@ -114,12 +120,19 @@ void main() {
           await settleReal(tester, ticks: 4);
         }
         if (route == 'library') {
-          expect(find.text('Lento avanti'), findsNWidgets(2));
+          expect(
+            find.text('Distensioni in piedi con bilanciere'),
+            findsOneWidget,
+          );
+          expect(find.text('Distensioni sedute con manubri'), findsOneWidget);
           expect(find.text('Bilanciere'), findsOneWidget);
           expect(find.text('Manubri'), findsOneWidget);
         } else {
-          expect(find.text('Lento avanti · Bilanciere'), findsWidgets);
-          expect(find.text('Lento avanti · Manubri'), findsWidgets);
+          expect(
+            find.text('Distensioni in piedi con bilanciere'),
+            findsWidgets,
+          );
+          expect(find.text('Distensioni sedute con manubri'), findsWidgets);
         }
         expect(tester.takeException(), isNull);
         await h.unmount(tester);

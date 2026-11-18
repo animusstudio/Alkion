@@ -112,52 +112,89 @@ void main() {
   setUpAll(preloadAppFonts);
 
   for (final profile in CatalogMeasurementProfileEvidence.definitions.keys) {
-    testWidgets('$profile mounts all required and optional controls unset', (
-      tester,
-    ) async {
-      final host = _Host(_evidence(profile));
-      addTearDown(host.dispose);
-      final original = host.evidence.toJson();
-      await tester.pumpWidget(host.app());
-      await tester.pumpAndSettle();
-      expect(host.evidence.validForLogging, isFalse);
-      expect(host.evidence.metrics, isEmpty);
-      expect(host.edits, isEmpty);
-      for (final metric in [
-        'reported_load',
-        'repetitions',
-        'duration',
-        'distance',
-      ]) {
-        if (!host.evidence.selection.profile.metrics.contains(metric)) {
-          expect(_ruler(metric), findsNothing);
+    testWidgets(
+      '$profile discloses optional measurements without setting them',
+      (tester) async {
+        final host = _Host(_evidence(profile));
+        addTearDown(host.dispose);
+        final original = host.evidence.toJson();
+        await tester.pumpWidget(host.app());
+        await tester.pumpAndSettle();
+        expect(host.evidence.validForLogging, isFalse);
+        expect(host.evidence.metrics, isEmpty);
+        expect(host.edits, isEmpty);
+        final definition = host.evidence.selection.profile;
+        final deferred = definition.optionalMetrics
+            .where((metric) => metric == 'duration' || metric == 'distance')
+            .toList();
+        for (final metric in definition.metrics) {
+          expect(
+            _ruler(metric),
+            deferred.contains(metric) ? findsNothing : findsOneWidget,
+            reason:
+                'required and primary measurements are immediately available',
+          );
           expect(_type(metric), findsNothing);
         }
-      }
-      for (final metric in host.evidence.selection.profile.metrics) {
-        expect(
-          _ruler(metric),
-          findsOneWidget,
-          reason: 'fresh entry starts on rulers',
-        );
-        final target = _ruler(metric);
-        expect(target, findsOneWidget);
-        await tester.ensureVisible(target);
-        expect(tester.getSize(target).height, greaterThanOrEqualTo(48));
-        if (_ruler(metric).evaluate().isNotEmpty) {
-          final ruler = tester.widget<RulerPicker>(_ruler(metric));
-          expect(ruler.format(ruler.value), '—', reason: 'unset is not zero');
+        final more = find.byKey(const Key('catalog-more-measurements'));
+        expect(more, deferred.isEmpty ? findsNothing : findsOneWidget);
+        if (deferred.isNotEmpty) {
+          expect(tester.widget<Semantics>(more).properties.expanded, isFalse);
+          await tester.ensureVisible(more);
+          await tester.tap(more);
+          await tester.pumpAndSettle();
+          expect(tester.widget<Semantics>(more).properties.expanded, isTrue);
+          expect(host.evidence.toJson(), original);
+          expect(host.edits, isEmpty);
         }
-        await _open(tester, metric);
-        expect(tester.widget<TextField>(_field).controller!.text, isEmpty);
-        await tester.tap(_done);
-        await tester.pumpAndSettle();
-      }
-      expect(host.edits, isEmpty);
-      expect(host.evidence.toJson(), original);
-      expect(find.byType(TextField), findsNothing);
-      expect(tester.takeException(), isNull);
-    });
+        for (final metric in [
+          'reported_load',
+          'repetitions',
+          'duration',
+          'distance',
+        ]) {
+          if (!host.evidence.selection.profile.metrics.contains(metric)) {
+            expect(_ruler(metric), findsNothing);
+            expect(_type(metric), findsNothing);
+          }
+        }
+        for (final metric in host.evidence.selection.profile.metrics) {
+          expect(
+            _ruler(metric),
+            findsOneWidget,
+            reason: 'fresh entry starts on rulers',
+          );
+          final target = _ruler(metric);
+          expect(target, findsOneWidget);
+          await tester.ensureVisible(target);
+          expect(tester.getSize(target).height, greaterThanOrEqualTo(48));
+          if (_ruler(metric).evaluate().isNotEmpty) {
+            final ruler = tester.widget<RulerPicker>(_ruler(metric));
+            expect(ruler.format(ruler.value), '—', reason: 'unset is not zero');
+          }
+          await _open(tester, metric);
+          expect(tester.widget<TextField>(_field).controller!.text, isEmpty);
+          await tester.tap(_done);
+          await tester.pumpAndSettle();
+        }
+        expect(host.edits, isEmpty);
+        expect(host.evidence.toJson(), original);
+        expect(find.byType(TextField), findsNothing);
+        if (deferred.isNotEmpty) {
+          await tester.ensureVisible(more);
+          await tester.tap(more);
+          await tester.pumpAndSettle();
+          expect(tester.widget<Semantics>(more).properties.expanded, isFalse);
+          for (final metric in deferred) {
+            expect(_ruler(metric), findsNothing);
+            expect(_type(metric), findsNothing);
+          }
+          expect(host.edits, isEmpty);
+          expect(host.evidence.toJson(), original);
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
 
   testWidgets('modal retains leading zeros and exact comma decimal lexemes', (
