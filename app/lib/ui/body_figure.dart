@@ -142,18 +142,29 @@ class _BodyFigureState extends State<BodyFigure> {
   bool _introClaimed = false;
   late final ValueNotifier<WorkoutWorkload> _current;
 
-  /// True once per figure, and once per [BodyFigure.introKey] per route. Only
-  /// the artwork's first mount reads it, so later builds may claim false.
+  /// True once per figure, and once per [BodyFigure.introKey] per route until
+  /// an intro has started. Only the artwork's first mount reads it, so later
+  /// builds may claim false. The mark is written by [_recordIntro], not here: a
+  /// figure disposed before it ever turns leaves the next mount its intro.
   bool _claimIntro() {
     if (_introClaimed) return false;
     _introClaimed = true;
     final key = widget.introKey;
     final storage = key == null ? null : PageStorage.maybeOf(context);
     if (storage == null) return true;
-    final id = ('alkion-body-intro', key);
-    if (storage.readState(context, identifier: id) == true) return false;
-    storage.writeState(context, true, identifier: id);
-    return true;
+    return storage.readState(context, identifier: (_introId, key)) != true;
+  }
+
+  static const _introId = 'alkion-body-intro';
+
+  /// The renderer reported the intro turning: later mounts under the same
+  /// [BodyFigure.introKey] start still.
+  void _recordIntro() {
+    final key = widget.introKey;
+    if (!mounted || key == null) return;
+    PageStorage.maybeOf(
+      context,
+    )?.writeState(context, true, identifier: (_introId, key));
   }
 
   @override
@@ -213,6 +224,7 @@ class _BodyFigureState extends State<BodyFigure> {
                         workload: widget.workload,
                         visible: widget.visible,
                         intro: _claimIntro(),
+                        onIntroStarted: _recordIntro,
                         compact: true,
                         size: Size(width, artHeight),
                         background: widget.background ?? context.tokens.surface,
@@ -522,6 +534,7 @@ class _BodyArtwork extends StatefulWidget {
     required this.size,
     required this.background,
     required this.intro,
+    this.onIntroStarted,
   });
   final WorkoutWorkload workload;
   final bool visible;
@@ -529,6 +542,9 @@ class _BodyArtwork extends StatefulWidget {
 
   /// Whether this mount asks for the one intro turn; otherwise it starts still.
   final bool intro;
+
+  /// Forwarded to [CharacterBody.onIntroStarted].
+  final VoidCallback? onIntroStarted;
   final Size size;
   final Color background;
 
@@ -673,6 +689,7 @@ class _BodyArtworkState extends State<_BodyArtwork> {
         visible: visible,
         reducedMotion: reduced,
         compact: widget.compact,
+        onIntroStarted: widget.onIntroStarted,
         controller: _controller,
         fallback: fallback,
         onStatus: (status) {

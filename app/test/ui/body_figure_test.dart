@@ -329,10 +329,22 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    CharacterBodyController controller() =>
-        tester.widget<CharacterBody>(find.byType(CharacterBody)).controller;
+    CharacterBody body() =>
+        tester.widget<CharacterBody>(find.byType(CharacterBody));
+    CharacterBodyController controller() => body().controller;
+    expect(controller().paused, isFalse, reason: 'the first appearance turns');
+
+    // Disposed before the renderer ever turned (a pager page built offscreen):
+    // the intro is not spent, so the next mount still turns.
+    setScene(() => shown = false);
+    await tester.pumpAndSettle();
+    setScene(() => shown = true);
+    await tester.pumpAndSettle();
+    expect(controller().paused, isFalse, reason: 'an unseen intro is kept');
+
+    // The renderer reports the turn running: the key's intro is spent.
     final first = controller();
-    expect(first.paused, isFalse, reason: 'the first appearance turns once');
+    body().onIntroStarted!();
 
     // Shown again after a tab switch: a new mount under the same key holds.
     setScene(() => shown = false);
