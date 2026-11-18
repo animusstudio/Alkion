@@ -68,7 +68,23 @@ Linux uses the external browser and a bounded IPv4 loopback listener. Register
 an exact `http://127.0.0.1:<port>/callback` (or `/oauth2redirect`) URI with a
 port >=1024. This callback is native OAuth transport, separate from the
 development API/issuer HTTP allowance. The pinned desktop listener supports
-IPv4 only. Browser flows time out after 120 seconds.
+IPv4 only.
+
+On both platforms a browser flow waits up to 300 seconds, the provider's own
+ceremony age bound. Alkion owns that bound: on expiry it cancels the flow and
+reports "timed out, try again", distinct from a user cancel, and discards any
+callback that arrives later, so no session results. Every sign-in asks for a
+fresh login with OIDC `prompt=login` alone (no `max_age`), so an older provider
+session re-authenticates instead of failing the age bound. The enrollment
+route keeps its request unchanged.
+
+Disconnect clears this device at once and, best-effort, revokes the refresh
+token and then the access token at the discovered `revocation_endpoint`
+(RFC 7009, at most 8 seconds, through the same guarded auth transport). It also
+revokes a saved connection that was not checked this run. When the provider
+cannot confirm the sign-out (unreachable, refused or no endpoint), the local
+session is still cleared and the app says so. The local-only pre-clear inside
+Connect never contacts the provider.
 
 Android secrets use Keystore-backed RSA-OAEP/AES-GCM in the dedicated
 `alkion_animus_v1` namespace. Linux requires libsecret and an unlocked Secret
@@ -378,7 +394,8 @@ or `make -C app build-apk-animus ANIMUS_PRIVATE_HTTP=1 ANIMUS_CONFIG=<setup-file
 with an explicit existing disposable Android signer directory. Android only admits
 Dev/debug, with callback `dev.animusstudio.alkion.dev:/oauth2redirect`; native and
 Dart opt-ins must match. Its generated ignored XML admits exactly the configured
-API/identity hosts without subdomains; Dart additionally pins ports and endpoints.
+API/identity hosts without subdomains; Dart additionally pins ports and endpoints
+(discovery, JWKS, `authorize/`, `token/` and `revoke/` under `/application/o/`).
 Default/supported/profile/release paths stay closed. No install or launch occurs.
 
 HTTP exposes credentials/tokens/data along its network path. It cannot qualify
