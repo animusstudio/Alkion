@@ -37,6 +37,7 @@ class AuthFixture {
   String jwksEndpoint = 'https://identity.example.test/jwks';
   String? revocationEndpoint = 'https://identity.example.test/revoke';
   int revocationStatus = 200;
+  String? refusedRevocationHint;
   final revocations = <Map<String, String>>[];
   Completer<void>? revocationGate;
   Completer<void>? tokenGate;
@@ -110,9 +111,15 @@ class AuthFixture {
     }
     if (revocationEndpoint != null &&
         request.url.toString() == revocationEndpoint) {
-      revocations.add(request.bodyFields);
+      final fields = request.bodyFields;
+      revocations.add(fields);
       await revocationGate?.future;
-      return http.Response('', revocationStatus);
+      return http.Response(
+        '',
+        fields['token_type_hint'] == refusedRevocationHint
+            ? 400
+            : revocationStatus,
+      );
     }
     if (request.url.toString() == tokenEndpoint) {
       final params = request.bodyFields;
@@ -232,6 +239,8 @@ class MemoryAuthSecrets implements AnimusSecretStore {
   bool unavailable = false;
   bool failWrite = false;
   Completer<void>? writeGate;
+  Completer<void>? readGate;
+  int reads = 0;
   void _check() {
     calls++;
     if (unavailable) throw const AnimusSecretStoreUnavailable();
@@ -242,6 +251,8 @@ class MemoryAuthSecrets implements AnimusSecretStore {
   @override
   Future<String?> read(AnimusScope scope) async {
     _check();
+    reads++;
+    await readGate?.future;
     return values[scope.storageKey];
   }
 

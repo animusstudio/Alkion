@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 import 'package:oidc/oidc.dart';
@@ -61,20 +62,24 @@ final class OidcAnimusAuth implements AnimusAuthPort {
   // Different owners of the same profile may overlap during bounded teardown.
   // Share the write/delete queue so an old owner's cleanup precedes new bytes.
   static final Map<String, Future<void>> _secretQueues = {};
-  // Covers discovery, the full browser window and the code exchange.
-  static const _workTimeout = Duration(seconds: 360);
+  static const _workTimeout = Duration(seconds: 140);
+  // Sign-in covers discovery, the full 300 s browser window and the exchange.
+  static const _signInTimeout = Duration(seconds: 360);
   static const _localTimeout = Duration(seconds: 5);
   // Disconnect's provider revocation; local removal never waits on it.
   static const _revokeTimeout = Duration(seconds: 8);
   static const _freshLogin = ['login'];
   final Set<http.Client> _revocations = {};
 
-  Future<T> _serialized<T>(Future<T> Function(int epoch) action) {
+  Future<T> _serialized<T>(
+    Future<T> Function(int epoch) action, {
+    Duration timeout = _workTimeout,
+  }) {
     final epoch = _epoch;
     final result = _actions.then((_) async {
       _check(epoch);
       try {
-        return await _interruptible(action(epoch));
+        return await _interruptible(action(epoch), timeout);
       } on AnimusAuthFailure {
         rethrow;
       } on AnimusSecretStoreUnavailable {
@@ -89,14 +94,14 @@ final class OidcAnimusAuth implements AnimusAuthPort {
     return result;
   }
 
-  Future<T> _interruptible<T>(Future<T> future) =>
+  Future<T> _interruptible<T>(Future<T> future, Duration timeout) =>
       Future.any([
         future,
         _interrupted.future.then<T>(
           (_) => throw const AnimusAuthFailure(AnimusAuthFailureKind.cancelled),
         ),
       ]).timeout(
-        _workTimeout,
+        timeout,
         onTimeout: () {
           _fence();
           unawaited(_browser.cancel().catchError((Object _) {}));
@@ -254,7 +259,7 @@ final class OidcAnimusAuth implements AnimusAuthPort {
       return null;
     }
     return _session = _validated(user);
-  });
+  }, timeout: _signInTimeout);
 
   @override
   Future<AnimusAuthSession?> restore() => _serialized((epoch) async {
@@ -430,9 +435,10 @@ final class OidcAnimusAuth implements AnimusAuthPort {
 
   @override
   Future<bool> signOut() async {
-    // Capture the provider material before the local fence drops it.
+    // Capture the provider material, then fence synchronously: no await may
+    // precede the fence, or it would cancel a Connect started meanwhile.
     final manager = _manager;
-    var token = manager?.currentUser?.token;
+    final token = manager?.currentUser?.token;
     Uri? endpoint;
     if (token != null) {
       try {
@@ -441,27 +447,32 @@ final class OidcAnimusAuth implements AnimusAuthPort {
         endpoint = null;
       }
     }
-    var readable = true;
-    if (token == null) {
-      // A saved connection that was never restored this run still holds live
-      // provider tokens; read them before the local delete is queued.
-      try {
-        token = _storedToken(await _readSecret());
-      } on Object {
-        readable = false;
+    _fence();
+    Future<bool>? revoked = token == null ? null : _revoke(token, endpoint);
+    // One queued secure operation: a saved connection that was never restored
+    // this run still holds live provider tokens, so read them, then delete.
+    final cleanup = _secret(() async {
+      if (revoked == null) {
+        try {
+          final stored = _storedToken(await _secrets.read(scope));
+          revoked = stored == null ? Future.value(true) : _revoke(stored, null);
+        } on Object {
+          revoked = Future.value(false);
+        }
       }
+      await _secrets.delete(scope);
+    });
+    try {
+      await Future.wait([_browser.cancel(), _dropManager(), cleanup]).timeout(
+        _localTimeout,
+        onTimeout: () => throw const AnimusSecretStoreUnavailable(),
+      );
+    } on AnimusSecretStoreUnavailable {
+      rethrow;
+    } on Object {
+      throw const AnimusSecretStoreUnavailable();
     }
-    final revoked = token == null
-        ? Future.value(readable)
-        : _revoke(token, endpoint);
-    await disconnect();
-    return revoked;
-  }
-
-  Future<String?> _readSecret() async {
-    String? raw;
-    await _secret(() async => raw = await _secrets.read(scope));
-    return raw;
+    return revoked ?? Future.value(false);
   }
 
   OidcToken? _storedToken(String? raw) {
@@ -493,21 +504,27 @@ final class OidcAnimusAuth implements AnimusAuthPort {
           (token.refreshToken, 'refresh_token'),
           (token.accessToken, 'access_token'),
         ];
-        var sent = false;
+        // Best effort: a refused refresh revocation still tries the access
+        // token. Confirmed only when every present token was revoked.
+        var sent = false, confirmed = true;
         for (final (value, hint) in tokens) {
           if (value == null || value.isEmpty) continue;
-          final response = await client.post(
-            endpoint,
-            body: {
-              'token': value,
-              'token_type_hint': hint,
-              'client_id': config.clientId,
-            },
-          );
-          if (response.statusCode != 200) return false;
           sent = true;
+          try {
+            final response = await client.post(
+              endpoint,
+              body: {
+                'token': value,
+                'token_type_hint': hint,
+                'client_id': config.clientId,
+              },
+            );
+            if (response.statusCode != 200) confirmed = false;
+          } on Object {
+            confirmed = false;
+          }
         }
-        return sent;
+        return sent && confirmed;
       }().timeout(_revokeTimeout);
     } on Object {
       return false;
@@ -595,17 +612,7 @@ final class _GuardedManager extends OidcUserManager {
     Map<String, dynamic> preparationResult,
   ) async {
     checkCurrent();
-    if (request.codeChallengeMethod != 'S256' ||
-        request.codeChallenge == null ||
-        request.nonce == null ||
-        request.state == null ||
-        request.redirectUri.toString() != config.redirectUri.toString() ||
-        request.responseType.length != 1 ||
-        request.responseType.single != 'code' ||
-        request.maxAge != null ||
-        (intent == AnimusAuthIntent.signIn &&
-            (request.prompt?.length != 1 ||
-                request.prompt!.single != 'login'))) {
+    if (!animusAuthorizeRequestAccepted(request, config, intent)) {
       throw const AnimusAuthFailure(AnimusAuthFailureKind.invalidResponse);
     }
     final endpoint = metadata.authorizationEndpoint;
@@ -671,6 +678,26 @@ final class _GuardedManager extends OidcUserManager {
     );
   }
 }
+
+/// The prepared request the browser may receive: PKCE S256, state, nonce, the
+/// exact callback, code only, no `max_age`, and `prompt=login` alone on every
+/// sign-in so a stale provider session re-authenticates.
+@visibleForTesting
+bool animusAuthorizeRequestAccepted(
+  OidcAuthorizeRequest request,
+  AnimusConfig config,
+  AnimusAuthIntent intent,
+) =>
+    request.codeChallengeMethod == 'S256' &&
+    request.codeChallenge != null &&
+    request.nonce != null &&
+    request.state != null &&
+    request.redirectUri.toString() == config.redirectUri.toString() &&
+    request.responseType.length == 1 &&
+    request.responseType.single == 'code' &&
+    request.maxAge == null &&
+    (intent != AnimusAuthIntent.signIn ||
+        (request.prompt?.length == 1 && request.prompt!.single == 'login'));
 
 /// Auth HTTP has no redirects, cookie jar, retries or diagnostic body output.
 final class _AuthHttpClient extends http.BaseClient {

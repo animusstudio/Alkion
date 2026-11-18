@@ -10,6 +10,7 @@ import 'package:alkion/animus/probe.dart';
 import 'package:alkion/animus/ports.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
+import 'package:oidc/oidc.dart' show OidcAuthorizeRequest;
 import 'package:oidc_platform_interface/oidc_platform_interface.dart';
 
 import 'auth_fixture.dart';
@@ -445,6 +446,54 @@ void main() {
       );
     }
 
+    test(
+      'a refused refresh revocation still revokes the access token',
+      () async {
+        await retained();
+        fixture.refusedRevocationHint = 'refresh_token';
+        expect(await auth.signOut(), isFalse);
+        expect(fixture.revocations.map((r) => r['token_type_hint']), [
+          'refresh_token',
+          'access_token',
+        ]);
+        expect(fixture.secrets.values, isEmpty);
+      },
+    );
+
+    test(
+      'a Connect started during the saved-token read is not cancelled',
+      () async {
+        await retained();
+        await auth.close();
+        auth = OidcAnimusAuth(
+          scope: fixture.scope,
+          secrets: fixture.secrets,
+          browser: fixture.browser,
+          httpClientFactory: fixture.client,
+        );
+        fixture.secrets.readGate = Completer<void>();
+        final signingOut = auth.signOut();
+        await _until(() => fixture.secrets.reads == 1);
+        fixture.browser.gate = Completer<Uri?>();
+        final launches = fixture.browser.launches;
+        final connecting = auth.authorize();
+        await _until(() => fixture.browser.launches == launches + 1);
+        fixture.secrets.readGate!.complete();
+        expect(await signingOut, isTrue);
+        expect(fixture.secrets.values, isEmpty);
+        final transaction = fixture.browser.lastTransaction!;
+        fixture.browser.gate!.complete(
+          fixture.scope.config.redirectUri.replace(
+            queryParameters: {
+              'code': 'unit-code',
+              'state': transaction.queryParameters['state']!,
+            },
+          ),
+        );
+        expect(await connecting, isNotNull);
+      },
+    );
+
     test('local clear never waits on a slow provider', () async {
       await retained();
       fixture.revocationGate = Completer<void>();
@@ -475,6 +524,57 @@ void main() {
         await controller.close();
         controller.dispose();
       }
+    });
+  });
+
+  group('authorization request guard', () {
+    OidcAuthorizeRequest request({List<String>? prompt, Duration? maxAge}) =>
+        OidcAuthorizeRequest(
+          responseType: const ['code'],
+          clientId: fixture.scope.config.clientId,
+          redirectUri: fixture.scope.config.redirectUri,
+          scope: const ['openid'],
+          codeChallenge: 'unit-challenge',
+          codeChallengeMethod: 'S256',
+          state: 'unit-state',
+          nonce: 'unit-nonce',
+          prompt: prompt,
+          maxAge: maxAge,
+        );
+    bool accepted(OidcAuthorizeRequest r, AnimusAuthIntent intent) =>
+        animusAuthorizeRequestAccepted(r, fixture.scope.config, intent);
+
+    test('accepts a sign-in with prompt=login alone', () {
+      expect(
+        accepted(request(prompt: ['login']), AnimusAuthIntent.signIn),
+        isTrue,
+      );
+    });
+
+    for (final prompt in <List<String>?>[
+      null,
+      [],
+      ['none'],
+      ['consent'],
+      ['login', 'consent'],
+    ]) {
+      test('rejects a sign-in with prompt $prompt', () {
+        expect(
+          accepted(request(prompt: prompt), AnimusAuthIntent.signIn),
+          isFalse,
+        );
+      });
+    }
+
+    test('rejects max_age and keeps the enrollment request unchanged', () {
+      expect(
+        accepted(
+          request(prompt: ['login'], maxAge: const Duration(minutes: 5)),
+          AnimusAuthIntent.signIn,
+        ),
+        isFalse,
+      );
+      expect(accepted(request(), AnimusAuthIntent.createAccount), isTrue);
     });
   });
 
