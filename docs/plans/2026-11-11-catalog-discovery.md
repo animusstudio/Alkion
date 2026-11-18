@@ -2,7 +2,7 @@
 type: plan
 status: done
 created: 2026-11-11
-updated: 2026-11-11
+updated: 2026-11-18
 tags: [alkion, catalog, search, usability]
 ---
 
@@ -154,3 +154,20 @@ No product changes needed; full-suite qualification is the fresh exact-head CI.
 CI exposed one notification test's event-queue timing assumption (3,820 pass,
 one fail). Replace it with bounded first-render signaling and cleanup; 134 focused
 tests PASS and analysis clean. Runtime inputs unchanged; rerun exact-head CI.
+
+## Second integration — 2026-11-18
+
+Exact-head CI passed on `f0c3917` (`analyze-test`), but the PR was not merged
+before public main moved to `d9b8182` (body intro follow-ups). The owner asked
+to finish the delivery. Merged `d9b8182` at `1eb3081`; the only conflict was the
+plan list in `docs/alkion/development.md`, resolved by keeping both entries,
+newest first. The catalog and body changes touch disjoint files.
+
+- Independent re-check of the merge and the outgoing range (Sonnet): PASS, no
+  findings; outgoing 13 commits, 0 leak findings, no session trailers.
+- Full suite: +3822 ~3, no failures, including the three optional-control
+  expectations that fail on main. Tracked code analyzes clean; the only local
+  analyzer notices come from ignored private qualification files under
+  `app/build/`. Body runtime check PASS.
+
+Next: exact-head CI, merge with a merge commit, then the Animus pin.
