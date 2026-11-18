@@ -1,6 +1,7 @@
 # Body intro follow-ups
 
-2026-11-13 · Standard lane · Approved by the owner on 2026-11-13 ("Ok, proceed")
+2026-11-13 · Standard lane · **Done**. Published 2026-11-15 after the owner device check on the A024.
+Approved by the owner on 2026-11-13 ("Ok, proceed").
 
 These are the two T6 follow-ups from [UI declutter round 2](2026-11-09-ui-declutter-round-2.md).
 The 3D body plays one 8 s intro turn per view and then renders only on demand.
@@ -72,4 +73,5 @@ The 3D body plays one 8 s intro turn per view and then renders only on demand.
 
 ## Next
 
-Outgoing review of everything after `1bab7ca`, then owner-approved publication.
+Done. Published to public Alkion main as `f7c0c6f` on 2026-11-15; the outgoing-range review passed
+(8 commits, 0 leak findings).
