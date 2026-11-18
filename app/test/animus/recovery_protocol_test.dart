@@ -299,6 +299,16 @@ void main() {
     );
   }
 
+  test(
+    'lenient classification reads past non-finite numbers that strict JSON rejects',
+    () {
+      const text = '{"n":1e999,"error":"recovery_required"}';
+      expect(() => decodeStrictAnimusJson(text), throwsFormatException);
+      expect(animusJsonErrorCandidates(text), ['recovery_required']);
+      expect(hasRemoteRecoveryError(utf8.encode(text)), isTrue);
+    },
+  );
+
   test('strict JSON rejects escaped duplicate names at every level', () {
     for (final value in [
       r'{"error":"safe","err\u006fr":"operation_recovery_required"}',
@@ -736,6 +746,16 @@ void main() {
       r'{"error":"forbidden","error":"recovery\u005frequired"}',
     ),
     ('too-deep', 'text/plain', '${'[' * 300}${']' * 300}'),
+    (
+      'non-finite-before',
+      'text/plain',
+      '{"n":1e999,"error":"recovery_required"}',
+    ),
+    (
+      'non-finite-after',
+      'text/plain',
+      '{"error":"recovery_required","n":-1e999}',
+    ),
   ]) {
     test(
       '$name recovery code on a 403 fences whatever its media type',

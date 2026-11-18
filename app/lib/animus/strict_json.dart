@@ -92,7 +92,8 @@ final class _StrictJson {
         if (match == null) _invalid();
         offset = match.end;
         final value = jsonDecode(match.group(0)!);
-        if (value is double && !value.isFinite) _invalid();
+        // A lenient reading keeps going: a later member may still carry a code.
+        if (errors == null && value is double && !value.isFinite) _invalid();
         return value;
     }
   }
