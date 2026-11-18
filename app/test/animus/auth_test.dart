@@ -363,6 +363,121 @@ void main() {
     }
   });
 
+  group('Disconnect sign-out', () {
+    Future<void> retained() async {
+      final session = (await auth.authorize())!;
+      await auth.retain(session);
+      expect(fixture.secrets.values, hasLength(1));
+    }
+
+    test(
+      'revokes the refresh token, then the access token, then clears',
+      () async {
+        await retained();
+        final records = <LogRecord>[];
+        final logging = Logger.root.onRecord.listen(records.add);
+        Logger.root.level = Level.ALL;
+        expect(await auth.signOut(), isTrue);
+        await logging.cancel();
+        expect(records, isEmpty);
+        expect(fixture.revocations.map((r) => r['token_type_hint']), [
+          'refresh_token',
+          'access_token',
+        ]);
+        expect(fixture.revocations.first['token'], 'unit-refresh');
+        expect(fixture.revocations.last['token'], startsWith('unit-bearer-'));
+        expect(fixture.revocations.map((r) => r['client_id']).toSet(), {
+          fixture.scope.config.clientId,
+        });
+        expect(fixture.secrets.values, isEmpty);
+      },
+    );
+
+    test(
+      'revokes a saved connection that was never restored this run',
+      () async {
+        await retained();
+        await auth.close();
+        final requests = fixture.requests;
+        auth = OidcAnimusAuth(
+          scope: fixture.scope,
+          secrets: fixture.secrets,
+          browser: fixture.browser,
+          httpClientFactory: fixture.client,
+        );
+        expect(await auth.signOut(), isTrue);
+        // One discovery read plus the two revocations; no token exchange.
+        expect(fixture.requests - requests, 3);
+        expect(
+          fixture.revocations.map((r) => r['token']).first,
+          'unit-refresh',
+        );
+        expect(fixture.refreshes, 0);
+        expect(fixture.secrets.values, isEmpty);
+      },
+    );
+
+    test('nothing saved means nothing to revoke', () async {
+      expect(await auth.signOut(), isTrue);
+      expect(fixture.requests, 0);
+    });
+
+    for (final failure in ['refused', 'no endpoint']) {
+      test(
+        '$failure is reported unconfirmed and still clears locally',
+        () async {
+          await retained();
+          if (failure == 'refused') {
+            fixture.revocationStatus = 503;
+          } else {
+            await auth.close();
+            fixture.revocationEndpoint = null;
+            auth = OidcAnimusAuth(
+              scope: fixture.scope,
+              secrets: fixture.secrets,
+              browser: fixture.browser,
+              httpClientFactory: fixture.client,
+            );
+          }
+          expect(await auth.signOut(), isFalse);
+          expect(fixture.secrets.values, isEmpty);
+        },
+      );
+    }
+
+    test('local clear never waits on a slow provider', () async {
+      await retained();
+      fixture.revocationGate = Completer<void>();
+      final signingOut = auth.signOut();
+      await _until(() => fixture.revocations.isNotEmpty);
+      await _until(() => fixture.secrets.values.isEmpty);
+      fixture.revocationGate!.complete();
+      expect(await signingOut, isTrue);
+    });
+
+    test("Connect's local pre-clear never contacts the provider", () async {
+      final controller = AnimusConnectionController(
+        config: fixture.scope.config,
+        auth: auth,
+        probe: _SdkSessionProbe(),
+      );
+      try {
+        await controller.connect();
+        await controller.confirm();
+        await controller.connect();
+        expect(controller.state, AnimusConnectionState.awaitingConfirmation);
+        await auth.disconnect();
+        expect(fixture.revocations, isEmpty);
+        await controller.disconnect();
+        expect(controller.state, AnimusConnectionState.disconnected);
+        expect(controller.issue, isNull);
+      } finally {
+        await controller.close();
+        controller.dispose();
+      }
+    });
+  });
+
   test('cancel fences late browser callback and token exchange', () async {
     fixture.browser.gate = Completer<Uri?>();
     final operation = auth.authorize();

@@ -49,6 +49,7 @@ void main() {
       expect(manager.settings.options!.linux.flowTimeoutSeconds, 300);
       expect(manager.settings.prompt, isEmpty);
       expect(manager.settings.maxAge, isNull);
+      expect(manager.settings.revokeTokensOnLogout, isFalse);
       await manager.dispose();
       expect(requests, 0);
     },

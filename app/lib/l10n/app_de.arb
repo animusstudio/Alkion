@@ -582,6 +582,7 @@
   "animusInvalidResponse": "Die Verbindung konnte nicht bestätigt werden. Verbinde dich erneut oder versuche es später.",
   "animusUnavailable": "Anmeldung nicht verfügbar. Versuche es erneut.",
   "animusSignInTimedOut": "Die Anmeldung wurde nicht rechtzeitig abgeschlossen. Versuche es erneut.",
+  "animusSignOutUnconfirmed": "Auf diesem Gerät getrennt. Die Abmeldung beim Server konnte nicht bestätigt werden.",
   "animusDisconnectBody": "Auf diesem Gerät trennen? Lokale Trainings, Entwürfe, ausstehende Änderungen und Backups bleiben erhalten. Du wirst nicht vom Browser abgemeldet.",
   "animusReadOnly": "Sende ein ausgewähltes Training aus dem Verlauf nach Bestätigung von Konto, Datenbereich und enthaltenen Übungen. Das Senden erfolgt manuell; lokale Trainings und Backups bleiben verfügbar.",
   "alkionEntryBody": "Melde dich bei Animus an oder trainiere ganz offline.",

@@ -699,7 +699,10 @@ String animusEntryStatus(AppLocalizations l, AnimusConnectionController c) =>
     switch (c.state) {
       AnimusConnectionState.disabled => l.alkionEntryUnavailable,
       AnimusConnectionState.misconfigured => l.animusMisconfigured,
-      AnimusConnectionState.disconnected => l.animusDisconnected,
+      AnimusConnectionState.disconnected =>
+        c.issue == AnimusConnectionIssue.serverSignOutUnconfirmed
+            ? l.animusSignOutUnconfirmed
+            : l.animusDisconnected,
       AnimusConnectionState.authenticating => l.animusAuthenticating,
       AnimusConnectionState.awaitingConfirmation =>
         l.animusAwaitingConfirmation,

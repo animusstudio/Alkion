@@ -660,6 +660,12 @@ final class _Auth implements AnimusAuthPort {
   Future<AnimusAuthSession?> refresh() =>
       throw StateError('no startup refresh');
   @override
+  Future<bool> signOut() async {
+    await disconnect();
+    return true;
+  }
+
+  @override
   Future<void> disconnect() async {}
   @override
   Future<void> cancel() async {}

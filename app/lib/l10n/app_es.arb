@@ -582,6 +582,7 @@
   "animusInvalidResponse": "No se pudo verificar la conexión. Conecta de nuevo o inténtalo más tarde.",
   "animusUnavailable": "El inicio de sesión no está disponible. Inténtalo de nuevo.",
   "animusSignInTimedOut": "El inicio de sesión caducó antes de completarse. Inténtalo de nuevo.",
+  "animusSignOutUnconfirmed": "Desconectado en este dispositivo. No se pudo confirmar el cierre de sesión en el servidor.",
   "animusDisconnectBody": "¿Desconectar en este dispositivo? Se conservan los entrenamientos locales, borradores, cambios pendientes y copias de seguridad. La sesión del navegador permanece abierta.",
   "animusReadOnly": "Envía un entrenamiento seleccionado desde Historial tras confirmar la cuenta, el espacio de datos y los ejercicios incluidos. El envío es manual; los entrenamientos locales y las copias de seguridad siguen disponibles.",
   "alkionEntryBody": "Entra con Animus o entrena sin conexión.",

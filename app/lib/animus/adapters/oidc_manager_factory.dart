@@ -41,6 +41,8 @@ OidcUserManagerSettings createAnimusOidcSettings(
     sendUserInfoRequest: false,
     followDistributedClaims: false,
   ),
+  // The SDK logout is never called. Disconnect revokes explicitly through the
+  // guarded auth transport, then clears locally (OidcAnimusAuth.signOut).
   revokeTokensOnLogout: false,
   // Matches SystemAnimusBrowser.maxFlowTimeout and the provider's 300 s bound.
   options: const OidcPlatformSpecificOptions(

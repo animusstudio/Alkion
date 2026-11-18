@@ -35,6 +35,10 @@ class AuthFixture {
   String authorizationEndpoint = 'https://identity.example.test/authorize';
   String tokenEndpoint = 'https://identity.example.test/token';
   String jwksEndpoint = 'https://identity.example.test/jwks';
+  String? revocationEndpoint = 'https://identity.example.test/revoke';
+  int revocationStatus = 200;
+  final revocations = <Map<String, String>>[];
+  Completer<void>? revocationGate;
   Completer<void>? tokenGate;
   Future<void> initialize() async {
     _keys = await Directory.systemTemp.createTemp('alkion-auth-synthetic-');
@@ -91,6 +95,7 @@ class AuthFixture {
           'token_endpoint_auth_methods_supported': ['none'],
           if (challengeMethods != null)
             'code_challenge_methods_supported': challengeMethods,
+          'revocation_endpoint': ?revocationEndpoint,
         }),
         200,
       );
@@ -102,6 +107,12 @@ class AuthFixture {
         }),
         200,
       );
+    }
+    if (revocationEndpoint != null &&
+        request.url.toString() == revocationEndpoint) {
+      revocations.add(request.bodyFields);
+      await revocationGate?.future;
+      return http.Response('', revocationStatus);
     }
     if (request.url.toString() == tokenEndpoint) {
       final params = request.bodyFields;

@@ -64,7 +64,10 @@ final class OidcAnimusAuth implements AnimusAuthPort {
   // Covers discovery, the full browser window and the code exchange.
   static const _workTimeout = Duration(seconds: 360);
   static const _localTimeout = Duration(seconds: 5);
+  // Disconnect's provider revocation; local removal never waits on it.
+  static const _revokeTimeout = Duration(seconds: 8);
   static const _freshLogin = ['login'];
+  final Set<http.Client> _revocations = {};
 
   Future<T> _serialized<T>(Future<T> Function(int epoch) action) {
     final epoch = _epoch;
@@ -426,10 +429,117 @@ final class OidcAnimusAuth implements AnimusAuthPort {
   }
 
   @override
+  Future<bool> signOut() async {
+    // Capture the provider material before the local fence drops it.
+    final manager = _manager;
+    var token = manager?.currentUser?.token;
+    Uri? endpoint;
+    if (token != null) {
+      try {
+        endpoint = manager!.discoveryDocument.revocationEndpoint;
+      } on Object {
+        endpoint = null;
+      }
+    }
+    var readable = true;
+    if (token == null) {
+      // A saved connection that was never restored this run still holds live
+      // provider tokens; read them before the local delete is queued.
+      try {
+        token = _storedToken(await _readSecret());
+      } on Object {
+        readable = false;
+      }
+    }
+    final revoked = token == null
+        ? Future.value(readable)
+        : _revoke(token, endpoint);
+    await disconnect();
+    return revoked;
+  }
+
+  Future<String?> _readSecret() async {
+    String? raw;
+    await _secret(() async => raw = await _secrets.read(scope));
+    return raw;
+  }
+
+  OidcToken? _storedToken(String? raw) {
+    if (raw == null) return null;
+    if (utf8.encode(raw).length > 256 * 1024) throw const FormatException();
+    final envelope = jsonDecode(raw) as Map<String, dynamic>;
+    if (envelope['version'] != 1 ||
+        envelope['scope'] != scope.storageKey ||
+        envelope['issuer'] != scope.config.issuer.toString() ||
+        envelope['token'] is! String) {
+      throw const FormatException();
+    }
+    return OidcToken.fromJson(
+      jsonDecode(envelope['token'] as String) as Map<String, dynamic>,
+    );
+  }
+
+  /// RFC 7009 through the guarded auth transport: no redirects, bounded bodies,
+  /// and no token, response or exception detail reaches any log or caller.
+  Future<bool> _revoke(OidcToken token, Uri? knownEndpoint) async {
+    final config = scope.config;
+    final client = _AuthHttpClient(_httpClientFactory(), config);
+    _revocations.add(client);
+    try {
+      return await () async {
+        final endpoint = knownEndpoint ?? await _discoverRevocation(client);
+        if (endpoint == null || !_safeEndpoint(endpoint, config)) return false;
+        final tokens = [
+          (token.refreshToken, 'refresh_token'),
+          (token.accessToken, 'access_token'),
+        ];
+        var sent = false;
+        for (final (value, hint) in tokens) {
+          if (value == null || value.isEmpty) continue;
+          final response = await client.post(
+            endpoint,
+            body: {
+              'token': value,
+              'token_type_hint': hint,
+              'client_id': config.clientId,
+            },
+          );
+          if (response.statusCode != 200) return false;
+          sent = true;
+        }
+        return sent;
+      }().timeout(_revokeTimeout);
+    } on Object {
+      return false;
+    } finally {
+      _revocations.remove(client);
+      client.close();
+    }
+  }
+
+  Future<Uri?> _discoverRevocation(http.Client client) async {
+    final config = scope.config;
+    final response = await client.get(
+      OidcUtils.getOpenIdConfigWellKnownUri(config.issuer),
+    );
+    if (response.statusCode != 200) return null;
+    final metadata = jsonDecode(response.body);
+    if (metadata is! Map<String, dynamic> ||
+        metadata['issuer'] != config.issuer.toString()) {
+      return null;
+    }
+    final value = metadata['revocation_endpoint'];
+    return value is String ? Uri.tryParse(value) : null;
+  }
+
+  @override
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
     _fence();
+    for (final client in _revocations.toList()) {
+      client.close();
+    }
     await Future.wait([
       _browser.close(),
       _dropManager(),
@@ -621,6 +731,7 @@ bool _safeEndpoint(Uri uri, AnimusConfig config) {
           '${config.issuer}jwks/',
           '${config.issuer.origin}/application/o/authorize/',
           '${config.issuer.origin}/application/o/token/',
+          '${config.issuer.origin}/application/o/revoke/',
         }.contains(uri.toString());
   }
   return uri.scheme == 'https' ||

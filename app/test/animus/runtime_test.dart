@@ -174,6 +174,12 @@ class _Auth implements AnimusAuthPort {
   }
 
   @override
+  Future<bool> signOut() async {
+    await disconnect();
+    return true;
+  }
+
+  @override
   Future<void> disconnect() async {
     calls++;
   }
