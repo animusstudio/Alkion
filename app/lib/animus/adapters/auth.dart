@@ -64,6 +64,7 @@ final class OidcAnimusAuth implements AnimusAuthPort {
   // Covers discovery, the full browser window and the code exchange.
   static const _workTimeout = Duration(seconds: 360);
   static const _localTimeout = Duration(seconds: 5);
+  static const _freshLogin = ['login'];
 
   Future<T> _serialized<T>(Future<T> Function(int epoch) action) {
     final epoch = _epoch;
@@ -231,6 +232,10 @@ final class OidcAnimusAuth implements AnimusAuthPort {
     try {
       user = await manager.loginAuthorizationCodeFlow(
         includeIdTokenHintFromCurrentUser: false,
+        // Every sign-in is a fresh ceremony: an older provider session would
+        // fail the provider's login-age bound instead of re-authenticating.
+        // Enrollment already authenticates the new account in the same flow.
+        promptOverride: intent == AnimusAuthIntent.signIn ? _freshLogin : null,
       );
     } on AnimusAuthFailure catch (failure) {
       if (failure.kind == AnimusAuthFailureKind.timedOut) await _dropManager();
@@ -486,7 +491,11 @@ final class _GuardedManager extends OidcUserManager {
         request.state == null ||
         request.redirectUri.toString() != config.redirectUri.toString() ||
         request.responseType.length != 1 ||
-        request.responseType.single != 'code') {
+        request.responseType.single != 'code' ||
+        request.maxAge != null ||
+        (intent == AnimusAuthIntent.signIn &&
+            (request.prompt?.length != 1 ||
+                request.prompt!.single != 'login'))) {
       throw const AnimusAuthFailure(AnimusAuthFailureKind.invalidResponse);
     }
     final endpoint = metadata.authorizationEndpoint;

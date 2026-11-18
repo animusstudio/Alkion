@@ -300,6 +300,19 @@ void main() {
   }
 
   test(
+    'every sign-in asks for a fresh login with prompt=login alone',
+    () async {
+      await auth.authorize();
+      await auth.authorize();
+      expect(fixture.browser.launches, 2);
+      final query = fixture.browser.lastAuthorization!.queryParametersAll;
+      expect(query['prompt'], ['login']);
+      expect(query.containsKey('max_age'), isFalse);
+      expect(query.containsKey('id_token_hint'), isFalse);
+    },
+  );
+
+  test(
     'a browser timeout is timed out, exchanges nothing and keeps no session',
     () async {
       fixture.browser.failure = const AnimusBrowserTimedOut();
