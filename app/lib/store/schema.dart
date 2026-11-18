@@ -2,9 +2,10 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 
 /// Forward IDs are reserved: 1 foundation, 2 domain adapters, 3 workout,
-/// 4 flexible prescriptions, 5 catalog execution, 6 remote recovery.
-/// Migration statements and resulting shapes for IDs 1–5 remain frozen.
-const currentSchemaVersion = 6;
+/// 4 flexible prescriptions, 5 catalog execution, 6 remote recovery,
+/// 7 remote attachment release.
+/// Migration statements and resulting shapes for IDs 1–6 remain frozen.
+const currentSchemaVersion = 7;
 const alkionApplicationId = 0x414C4B31;
 const reservedMigrationIds = {
   2: 'domains',
@@ -12,6 +13,7 @@ const reservedMigrationIds = {
   4: 'flexible-prescriptions',
   5: 'catalog-execution',
   6: 'animus-recovery',
+  7: 'animus-attachment-release',
 };
 
 const foundationDomainTables = [
@@ -82,11 +84,24 @@ const remoteRecoveryTables = [
   'animus_recovery_stages',
   'animus_recovery_stage_rows',
 ];
-const preservedTables = [...catalogPreservedTables, ...remoteRecoveryTables];
+const attachmentReleaseTables = [
+  'animus_released_attachments',
+  'animus_attachment_release_leases',
+];
+const remoteRecoveryPreservedTables = [
+  ...catalogPreservedTables,
+  ...remoteRecoveryTables,
+];
+const preservedTables = [
+  ...remoteRecoveryPreservedTables,
+  ...attachmentReleaseTables,
+];
 List<String> preservedTablesAt(int version) => version < 5
     ? foundationPreservedTables
     : version == 5
     ? catalogPreservedTables
+    : version == 6
+    ? remoteRecoveryPreservedTables
     : preservedTables;
 
 final schemaStatements = <String>[
@@ -367,7 +382,7 @@ final class SchemaRegistry {
             r'^[0-9a-f]{64}$',
           ).hasMatch(migrations[i].expectedSchemaDigest)) {
         throw const FormatException(
-          'Contiguous qualified migration IDs 1–6 required',
+          'Contiguous qualified migration IDs 1–7 required',
         );
       }
     }
@@ -618,15 +633,76 @@ final remoteRecoveryMigrationStatements = <String>[
     WHERE 1 ON CONFLICT DO NOTHING''',
 ];
 
+final _remoteRecoverySchemaStatements = [
+  ..._catalogExecutionSchemaStatements,
+  ...remoteRecoveryMigrationStatements.where((s) => s.startsWith('CREATE ')),
+];
+
+/// Only an unverified wrong-account attachment may leave the live tables, and
+/// only inside the transaction that holds its release lease after its evidence
+/// was archived. Leases are transient: the deferred FK refuses a COMMIT that
+/// keeps one after its attachment is gone.
+final attachmentReleaseMigrationStatements = <String>[
+  '''CREATE TABLE animus_released_attachments (
+    profile_id TEXT NOT NULL REFERENCES profile_state(profile_id), release_id TEXT NOT NULL,
+    binding_hash TEXT, evidence_bytes BLOB NOT NULL, evidence_hash TEXT NOT NULL,
+    release_count INTEGER NOT NULL CHECK(release_count>=1),
+    exchange_count INTEGER NOT NULL CHECK(exchange_count>=0),
+    first_released_at TEXT NOT NULL, last_released_at TEXT NOT NULL,
+    PRIMARY KEY(profile_id,release_id))''',
+  '''CREATE TABLE animus_attachment_release_leases (
+    profile_id TEXT NOT NULL REFERENCES profile_state(profile_id), attachment_id TEXT NOT NULL,
+    attachment_revision INTEGER NOT NULL, PRIMARY KEY(profile_id,attachment_id),
+    FOREIGN KEY(profile_id,attachment_id) REFERENCES animus_remote_attachments(profile_id,attachment_id) DEFERRABLE INITIALLY DEFERRED)''',
+  "CREATE TRIGGER animus_released_attachments_retain BEFORE DELETE ON animus_released_attachments BEGIN SELECT RAISE(ABORT,'remote_recovery_evidence_retained'); END",
+  '''CREATE TRIGGER animus_released_attachments_immutable BEFORE UPDATE ON animus_released_attachments
+    WHEN NEW.profile_id IS NOT OLD.profile_id OR NEW.release_id IS NOT OLD.release_id
+      OR NEW.binding_hash IS NOT OLD.binding_hash OR NEW.evidence_bytes IS NOT OLD.evidence_bytes
+      OR NEW.evidence_hash IS NOT OLD.evidence_hash OR NEW.first_released_at IS NOT OLD.first_released_at
+      OR NEW.release_count<=OLD.release_count OR NEW.exchange_count<OLD.exchange_count
+    BEGIN SELECT RAISE(ABORT,'immutable_remote_recovery_evidence'); END''',
+  for (final table in _releasableTables) 'DROP TRIGGER ${table}_retain',
+  '''CREATE TRIGGER animus_remote_attachments_retain BEFORE DELETE ON animus_remote_attachments
+    WHEN OLD.state<>'ready' OR OLD.archive_id IS NOT NULL OR NOT EXISTS (
+      SELECT 1 FROM animus_attachment_release_leases l WHERE l.profile_id=OLD.profile_id
+        AND l.attachment_id=OLD.attachment_id AND l.attachment_revision=OLD.revision)
+    BEGIN SELECT RAISE(ABORT,'remote_recovery_evidence_retained'); END''',
+  '''CREATE TRIGGER animus_exchange_intents_retain BEFORE DELETE ON animus_exchange_intents
+    WHEN OLD.state<>'settled' OR NOT EXISTS (
+      SELECT 1 FROM animus_attachment_release_leases l WHERE l.profile_id=OLD.profile_id
+        AND l.attachment_id=OLD.attachment_id)
+    BEGIN SELECT RAISE(ABORT,'remote_recovery_evidence_retained'); END''',
+  '''CREATE TRIGGER animus_response_evidence_retain BEFORE DELETE ON animus_response_evidence
+    WHEN NOT EXISTS (
+      SELECT 1 FROM animus_exchange_intents i JOIN animus_attachment_release_leases l
+        ON l.profile_id=i.profile_id AND l.attachment_id=i.attachment_id
+      WHERE i.profile_id=OLD.profile_id AND i.exchange_id=OLD.exchange_id AND i.state='settled')
+    BEGIN SELECT RAISE(ABORT,'remote_recovery_evidence_retained'); END''',
+];
+const _releasableTables = [
+  'animus_remote_attachments',
+  'animus_exchange_intents',
+  'animus_response_evidence',
+];
+
 SchemaRegistry remoteRecoverySchemaRegistry() => SchemaRegistry(
   forward: [
     ...catalogExecutionSchemaRegistry().migrations.skip(1),
     ForwardMigration(
       version: 6,
       statements: remoteRecoveryMigrationStatements,
+      expectedSchemaDigest: schemaSqlDigest(_remoteRecoverySchemaStatements),
+    ),
+    ForwardMigration(
+      version: 7,
+      statements: attachmentReleaseMigrationStatements,
       expectedSchemaDigest: schemaSqlDigest([
-        ..._catalogExecutionSchemaStatements,
-        ...remoteRecoveryMigrationStatements.where(
+        for (final sql in _remoteRecoverySchemaStatements)
+          if (!_releasableTables.any(
+            (table) => sql.startsWith('CREATE TRIGGER ${table}_retain '),
+          ))
+            sql,
+        ...attachmentReleaseMigrationStatements.where(
           (s) => s.startsWith('CREATE '),
         ),
       ]),

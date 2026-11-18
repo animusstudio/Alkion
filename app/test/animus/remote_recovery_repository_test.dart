@@ -244,7 +244,10 @@ void main() {
       profile: profile,
       expectedProfileId: profile.profileId,
     );
-    expect((await store.get('PRAGMA user_version')).values.single, 6);
+    expect(
+      (await store.get('PRAGMA user_version')).values.single,
+      currentSchemaVersion,
+    );
   }
 
   Future<(RemoteRecoveryRepository, String)> attached() async {
@@ -848,12 +851,13 @@ void main() {
       final before = await store.readTransaction(
         (tx) => readCoveredState(
           (sql) => tx.getAll(sql),
-          excluding: const {'animus_recovery_archives'},
+          excluding: uncapturedRecoveryTables,
         ),
       );
       final archive = await repo.capture(id);
       final payload = jsonDecode(utf8.decode(archive.coveredBytes)) as Map;
       expect(payload['tables'], before.tables);
+      expect(payload['released_attachments'], isEmpty);
       expect(
         (jsonDecode(utf8.decode(archive.manifestBytes)) as Map)['inventory'],
         before.manifestInventory(),
@@ -1015,7 +1019,7 @@ void main() {
       final path = store.path;
       await store.close();
       final native = sqlite.sqlite3.open(path);
-      native.execute('PRAGMA user_version=7');
+      native.execute('PRAGMA user_version=${currentSchemaVersion + 1}');
       native.close();
       final bytes = File(path).readAsBytesSync();
       await expectLater(
