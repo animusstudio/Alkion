@@ -581,6 +581,7 @@
   "animusVerificationUnavailable": "Angemeldet, aber der Prüfdatensatz ist nicht verfügbar. Versuche es später erneut.",
   "animusInvalidResponse": "Die Verbindung konnte nicht bestätigt werden. Verbinde dich erneut oder versuche es später.",
   "animusUnavailable": "Anmeldung nicht verfügbar. Versuche es erneut.",
+  "animusSignInTimedOut": "Die Anmeldung wurde nicht rechtzeitig abgeschlossen. Versuche es erneut.",
   "animusDisconnectBody": "Auf diesem Gerät trennen? Lokale Trainings, Entwürfe, ausstehende Änderungen und Backups bleiben erhalten. Du wirst nicht vom Browser abgemeldet.",
   "animusReadOnly": "Sende ein ausgewähltes Training aus dem Verlauf nach Bestätigung von Konto, Datenbereich und enthaltenen Übungen. Das Senden erfolgt manuell; lokale Trainings und Backups bleiben verfügbar.",
   "alkionEntryBody": "Melde dich bei Animus an oder trainiere ganz offline.",

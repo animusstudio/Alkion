@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:alkion/animus/adapters/auth.dart';
+import 'package:alkion/animus/adapters/auth_browser.dart';
 import 'package:alkion/animus/connection.dart';
 import 'package:alkion/animus/config.dart';
 import 'package:alkion/animus/contracts.dart';
@@ -9,6 +10,7 @@ import 'package:alkion/animus/probe.dart';
 import 'package:alkion/animus/ports.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
+import 'package:oidc_platform_interface/oidc_platform_interface.dart';
 
 import 'auth_fixture.dart';
 import 'support.dart';
@@ -297,6 +299,57 @@ void main() {
     );
   }
 
+  test(
+    'a browser timeout is timed out, exchanges nothing and keeps no session',
+    () async {
+      fixture.browser.failure = const AnimusBrowserTimedOut();
+      await expectLater(
+        auth.authorize(),
+        throwsA(
+          isA<AnimusAuthFailure>().having(
+            (failure) => failure.kind,
+            'kind',
+            AnimusAuthFailureKind.timedOut,
+          ),
+        ),
+      );
+      expect(fixture.exchanges, 0);
+      expect(fixture.secrets.values, isEmpty);
+      fixture.browser.failure = null;
+      expect(await auth.authorize(), isNotNull);
+    },
+  );
+
+  test('a provider callback after the 300 s bound leaves no session', () async {
+    final android = _LateAndroid();
+    final late = OidcAnimusAuth(
+      scope: fixture.scope,
+      secrets: fixture.secrets,
+      browser: SystemAnimusBrowser(
+        platform: AnimusPlatform.android,
+        android: android,
+        flowTimeout: const Duration(milliseconds: 100),
+      ),
+      httpClientFactory: fixture.client,
+    );
+    final controller = AnimusConnectionController(
+      config: fixture.scope.config,
+      auth: late,
+      probe: _SdkSessionProbe(),
+    );
+    try {
+      await controller.connect();
+      expect(android.delivered, isTrue);
+      expect(controller.state, AnimusConnectionState.timedOut);
+      expect(controller.identity, isNull);
+      expect(fixture.exchanges, 0);
+      expect(fixture.secrets.values, isEmpty);
+    } finally {
+      await controller.close();
+      controller.dispose();
+    }
+  });
+
   test('cancel fences late browser callback and token exchange', () async {
     fixture.browser.gate = Completer<Uri?>();
     final operation = auth.authorize();
@@ -503,6 +556,29 @@ Future<void> _until(bool Function() done) async {
     await Future<void>.delayed(const Duration(milliseconds: 5));
   }
   throw StateError('Synthetic operation did not reach bounded checkpoint');
+}
+
+/// Delivers a valid callback after the flow bound and ignores the cancel, as a
+/// provider redirect racing the timeout would.
+class _LateAndroid extends OidcAndroidHostApi {
+  bool delivered = false;
+  @override
+  Future<String?> authorize(
+    String url,
+    String? redirectUri,
+    String? callbackUrlScheme,
+    Map<String, Object?> options,
+  ) async {
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    delivered = true;
+    final state = Uri.parse(url).queryParameters['state']!;
+    return Uri.parse(redirectUri!)
+        .replace(queryParameters: {'code': 'late-code', 'state': state})
+        .toString();
+  }
+
+  @override
+  Future<void> cancel() async {}
 }
 
 class _SdkSessionProbe implements AnimusProbePort {

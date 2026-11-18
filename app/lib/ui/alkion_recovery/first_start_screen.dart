@@ -707,6 +707,7 @@ String animusEntryStatus(AppLocalizations l, AnimusConnectionController c) =>
       AnimusConnectionState.verified => l.animusVerified,
       AnimusConnectionState.accessDenied => l.animusAccessDenied,
       AnimusConnectionState.cancelled => l.animusCancelled,
+      AnimusConnectionState.timedOut => l.animusSignInTimedOut,
       AnimusConnectionState.unavailable => switch (c.issue) {
         AnimusConnectionIssue.secureStorageUnavailable =>
           l.animusSecureStorageUnavailable,

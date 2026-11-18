@@ -581,6 +581,7 @@
   "animusVerificationUnavailable": "Accesso effettuato, ma il record di verifica non è disponibile. Riprova più tardi.",
   "animusInvalidResponse": "Impossibile verificare la connessione. Connettiti di nuovo o riprova più tardi.",
   "animusUnavailable": "Accesso non disponibile. Riprova.",
+  "animusSignInTimedOut": "Tempo per l’accesso scaduto prima del completamento. Riprova.",
   "animusDisconnectBody": "Disconnettere questo dispositivo? Allenamenti locali, bozze, modifiche in attesa e backup vengono conservati. Il browser resta connesso.",
   "animusReadOnly": "Invia un allenamento selezionato dalla Cronologia dopo aver confermato account, spazio dati ed esercizi inclusi. L’invio è manuale; allenamenti locali e backup restano disponibili.",
   "alkionEntryBody": "Accedi con Animus o allenati del tutto offline.",

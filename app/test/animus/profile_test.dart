@@ -194,6 +194,28 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('a timed-out sign-in reads differently from a cancel', (
+    tester,
+  ) async {
+    final controller = AnimusConnectionController(
+      config: syntheticAnimusConfig(),
+      auth: _Auth()
+        ..failure = const AnimusAuthFailure(AnimusAuthFailureKind.timedOut),
+      probe: _Probe(),
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(panel(controller));
+    await tester.tap(find.text('Connect to Animus'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Sign-in timed out before it was finished. Try again.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('cancelled'), findsNothing);
+    expect(find.text('Connect to Animus'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('narrow large-text states fit all locales and both themes', (
     tester,
   ) async {

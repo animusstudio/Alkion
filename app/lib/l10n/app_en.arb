@@ -1155,6 +1155,7 @@
   "animusVerificationUnavailable": "Signed in, but the verification record is unavailable. Try again later.",
   "animusInvalidResponse": "The connection could not be verified. Connect again or try later.",
   "animusUnavailable": "Sign-in is unavailable. Try again.",
+  "animusSignInTimedOut": "Sign-in timed out before it was finished. Try again.",
   "animusDisconnectBody": "Disconnect on this device? Local workouts, drafts, pending changes and backups are kept. This does not sign you out of your browser.",
   "animusReadOnly": "Send one selected workout from History after confirming its account, data space and included exercises. Sending is manual; local workouts and backups remain available.",
   "alkionEntryBody": "Sign in with Animus, or train fully offline.",

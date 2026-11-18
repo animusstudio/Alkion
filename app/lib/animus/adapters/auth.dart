@@ -17,6 +17,9 @@ enum AnimusAuthFailureKind {
   sessionExpired,
   accountChanged,
   cancelled,
+
+  /// The browser sign-in reached its bound; a late callback is discarded.
+  timedOut,
   closed,
 }
 
@@ -58,7 +61,8 @@ final class OidcAnimusAuth implements AnimusAuthPort {
   // Different owners of the same profile may overlap during bounded teardown.
   // Share the write/delete queue so an old owner's cleanup precedes new bytes.
   static final Map<String, Future<void>> _secretQueues = {};
-  static const _workTimeout = Duration(seconds: 140);
+  // Covers discovery, the full browser window and the code exchange.
+  static const _workTimeout = Duration(seconds: 360);
   static const _localTimeout = Duration(seconds: 5);
 
   Future<T> _serialized<T>(Future<T> Function(int epoch) action) {
@@ -223,9 +227,15 @@ final class OidcAnimusAuth implements AnimusAuthPort {
     if (methods != null && !methods.contains('S256')) {
       throw const AnimusAuthFailure(AnimusAuthFailureKind.invalidResponse);
     }
-    final user = await manager.loginAuthorizationCodeFlow(
-      includeIdTokenHintFromCurrentUser: false,
-    );
+    final OidcUser? user;
+    try {
+      user = await manager.loginAuthorizationCodeFlow(
+        includeIdTokenHintFromCurrentUser: false,
+      );
+    } on AnimusAuthFailure catch (failure) {
+      if (failure.kind == AnimusAuthFailureKind.timedOut) await _dropManager();
+      rethrow;
+    }
     _check(epoch);
     if (user == null) {
       final receivedCallback = manager.receivedCallback;
@@ -509,10 +519,16 @@ final class _GuardedManager extends OidcUserManager {
         queryParameters: {'next': next.toString()},
       );
     }
-    final callback = await browser.authorize(
-      authorizationUri: browserUri,
-      redirectUri: config.redirectUri,
-    );
+    final Uri? callback;
+    try {
+      callback = await browser.authorize(
+        authorizationUri: browserUri,
+        redirectUri: config.redirectUri,
+      );
+    } on AnimusBrowserTimedOut {
+      checkCurrent();
+      throw const AnimusAuthFailure(AnimusAuthFailureKind.timedOut);
+    }
     checkCurrent();
     if (callback == null) return null;
     receivedCallback = true;

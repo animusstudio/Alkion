@@ -248,6 +248,21 @@ void main() {
     },
   );
 
+  test(
+    'a browser timeout is timed out, not cancelled, and keeps no account',
+    () async {
+      auth.failure = const AnimusAuthFailure(AnimusAuthFailureKind.timedOut);
+      await controller.connect();
+      expect(controller.state, AnimusConnectionState.timedOut);
+      expect(controller.issue, isNull);
+      expect(controller.identity, isNull);
+      expect(controller.busy, isFalse);
+      auth.failure = null;
+      await controller.connect();
+      expect(controller.state, AnimusConnectionState.awaitingConfirmation);
+    },
+  );
+
   test('arbitrary exception detail is reduced to a safe enum', () async {
     auth.failure = StateError('private provider response');
     await controller.connect();

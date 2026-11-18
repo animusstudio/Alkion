@@ -183,6 +183,7 @@ class FixtureBrowser implements AnimusBrowserPort {
 
   Uri Function(Uri uri, Uri redirect)? callback;
   Completer<Uri?>? gate;
+  Object? failure;
   int launches = 0;
   int cancellations = 0;
   @override
@@ -192,6 +193,7 @@ class FixtureBrowser implements AnimusBrowserPort {
   }) async {
     launches++;
     lastAuthorization = authorizationUri;
+    if (failure != null) throw failure!;
     if (gate != null) return gate!.future;
     return callback?.call(authorizationUri, redirectUri) ??
         redirectUri.replace(

@@ -19,6 +19,10 @@ enum AnimusConnectionState {
   accessDenied,
   unavailable,
   cancelled,
+
+  /// The browser sign-in was not finished within its bound. Distinct from a
+  /// user cancel so the UI can say "timed out, try again".
+  timedOut,
 }
 
 enum AnimusConnectionIssue {
@@ -136,6 +140,11 @@ final class AnimusConnectionController extends ChangeNotifier {
           if (error is AnimusAuthFailure &&
               error.kind == AnimusAuthFailureKind.cancelled) {
             _publish(AnimusConnectionState.cancelled);
+          } else if (error is AnimusAuthFailure &&
+              error.kind == AnimusAuthFailureKind.timedOut) {
+            _session = null;
+            _confirmed = false;
+            _publish(AnimusConnectionState.timedOut);
           } else {
             // Identity from a failed exchange is never usable by a later GET.
             _session = null;

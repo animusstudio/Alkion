@@ -165,6 +165,7 @@ String _status(AppLocalizations l, AnimusConnectionController connection) {
     AnimusConnectionState.verified => l.animusVerified,
     AnimusConnectionState.accessDenied => l.animusAccessDenied,
     AnimusConnectionState.cancelled => l.animusCancelled,
+    AnimusConnectionState.timedOut => l.animusSignInTimedOut,
     AnimusConnectionState.unavailable => switch (connection.issue) {
       AnimusConnectionIssue.secureStorageUnavailable =>
         l.animusSecureStorageUnavailable,

@@ -42,8 +42,9 @@ OidcUserManagerSettings createAnimusOidcSettings(
     followDistributedClaims: false,
   ),
   revokeTokensOnLogout: false,
+  // Matches SystemAnimusBrowser.maxFlowTimeout and the provider's 300 s bound.
   options: const OidcPlatformSpecificOptions(
-    android: OidcNativeOptionsAndroid(flowTimeoutSeconds: 120),
-    linux: OidcPlatformSpecificOptions_Native(flowTimeoutSeconds: 120),
+    android: OidcNativeOptionsAndroid(flowTimeoutSeconds: 300),
+    linux: OidcPlatformSpecificOptions_Native(flowTimeoutSeconds: 300),
   ),
 );
