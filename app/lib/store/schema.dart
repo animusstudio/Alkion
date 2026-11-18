@@ -639,9 +639,11 @@ final _remoteRecoverySchemaStatements = [
 ];
 
 /// Only an unverified wrong-account attachment may leave the live tables, and
-/// only inside the transaction that holds its release lease after its evidence
-/// was archived. Leases are transient: the deferred FK refuses a COMMIT that
-/// keeps one after its attachment is gone.
+/// only under the release lease taken after its evidence was archived. The
+/// release deletes its lease before COMMIT; a lease kept after its attachment
+/// is gone fails the deferred FK at COMMIT. Verified evidence (a 2xx on any
+/// non-discovery path) is never deletable, so through the immediate evidence
+/// and intent FKs a verified attachment cannot leave even under a lease.
 final attachmentReleaseMigrationStatements = <String>[
   '''CREATE TABLE animus_released_attachments (
     profile_id TEXT NOT NULL REFERENCES profile_state(profile_id), release_id TEXT NOT NULL,
@@ -676,7 +678,8 @@ final attachmentReleaseMigrationStatements = <String>[
     WHEN NOT EXISTS (
       SELECT 1 FROM animus_exchange_intents i JOIN animus_attachment_release_leases l
         ON l.profile_id=i.profile_id AND l.attachment_id=i.attachment_id
-      WHERE i.profile_id=OLD.profile_id AND i.exchange_id=OLD.exchange_id AND i.state='settled')
+      WHERE i.profile_id=OLD.profile_id AND i.exchange_id=OLD.exchange_id AND i.state='settled'
+        AND (i.path_kind='discovery' OR OLD.http_status NOT BETWEEN 200 AND 299))
     BEGIN SELECT RAISE(ABORT,'remote_recovery_evidence_retained'); END''',
 ];
 const _releasableTables = [
