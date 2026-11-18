@@ -62,9 +62,11 @@ class HistoryScreen extends StatefulWidget {
 class _HistoryScreenState extends State<HistoryScreen> {
   late final SessionRepository _sessionRepo;
   late final ExerciseRepository _exerciseRepo;
-  // Catalog loaded once per screen mount (not re-queried on every stats
-  // emission — it changes far less often than the session stream).
-  late final Future<List<Exercise>> _catalog;
+  // Watched, not read once: the shell's IndexedStack mounts History at
+  // startup, so a one-shot read missed every exercise created afterwards and
+  // labelled it "Deleted exercise". Cached once per mount (never per build).
+  late final Stream<List<Exercise>> _catalogStream = _exerciseRepo
+      .watchCatalog();
   late final Stream<List<HistorySessionRow>> _statsStream =
       widget.sessions ?? _sessionRepo.watchSessionStats();
 
@@ -73,7 +75,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
     super.initState();
     _sessionRepo = SessionRepository.local(context.read<LocalDatabase>());
     _exerciseRepo = ExerciseRepository.local(context.read<LocalDatabase>());
-    _catalog = _exerciseRepo.all();
   }
 
   @override
@@ -94,9 +95,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
       builder: (context, sessionSnap) {
         final sessions = sessionSnap.data ?? [];
 
-        // Build catalog map once (one-shot; catalog rarely changes).
-        return FutureBuilder<List<Exercise>>(
-          future: _catalog,
+        return StreamBuilder<List<Exercise>>(
+          stream: _catalogStream,
           builder: (context, catalogSnap) {
             final catalog = catalogSnap.data ?? [];
             final catalogMap = {for (final e in catalog) e.id: e};
@@ -109,8 +109,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               catalogMap,
               activeSessionId,
               lastFinished,
-              catalogLoaded:
-                  catalogSnap.connectionState == ConnectionState.done,
+              catalogLoaded: catalogSnap.hasData,
             );
           },
         );
