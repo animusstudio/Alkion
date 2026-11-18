@@ -84,3 +84,24 @@ analysis with zero issues, parent `make check`/`make smoke`, and read-only live
 desktop library checks showing 11 latest images per edition with matching hashes.
 Current scoped evidence and runtime/device limits are in
 [integrated acceptance](../alkion/acceptance.md#new-exercises-and-selectable-artwork-editions--2026-11-11).
+
+## Publication — 2026-11-18
+
+The four 2026-11-11 artwork plans were finished locally but not published. The
+owner asked to reconcile and publish them. Merged public main `70d549d` at
+`1e1da75` (the subject names `4d95a85`, the main seen when the merge started).
+Only `docs/alkion/acceptance.md` and `docs/alkion/development.md` conflicted;
+both keep every entry, newest first, and the plan list is back under its title.
+
+- The browser checks in `tools/artwork-library` still expected the 760-item
+  library and the earlier 77/93 regeneration cohort. They now read the counts
+  from the generated data. Two synthetic private paths in the tool tests are
+  split so the public leak scan does not flag them; the guards they test are
+  unchanged.
+- Checks: full suite +3925 ~3, no failures; analyze clean; Python tool tests
+  38 pass; both browser checks PASS (771 exercises, 11 latest per edition) with
+  a disposable staged catalog; body runtime check PASS.
+- Independent outgoing review (Sonnet): PASS. Manifests, registries and files
+  agree (771 per edition, hashes match); the female edition has no male
+  fallback; all 900 WebPs carry no EXIF/XMP/ICC metadata; no private paths,
+  data or session trailers. The range adds about 167 MB of WebP without LFS.
