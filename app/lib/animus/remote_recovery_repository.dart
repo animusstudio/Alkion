@@ -378,7 +378,9 @@ final class RemoteRecoveryRepository {
     }
     final evidence = localBytes({
       'format': 'alkion-animus-released-attachment/1',
-      'binding_base64': base64Encode((row['binding_bytes'] as List).cast<int>()),
+      'binding_base64': base64Encode(
+        (row['binding_bytes'] as List).cast<int>(),
+      ),
       'recovery_generation': row['recovery_generation'],
       'exchanges': kept,
       'elided_exchanges': shapes.length - kept.length,
