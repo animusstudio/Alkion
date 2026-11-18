@@ -46,9 +46,9 @@ const {pathToFileURL} = require('node:url');
     page.on('pageerror', error => errors.push(error.message));
     const localURL = pathToFileURL(path.join(gallery, 'index.html')).href;
     await page.goto(localURL);
-    await page.waitForFunction(() => document.querySelectorAll('.exercise').length === 760);
-    assert.equal(await page.locator('.exercise:visible').count(), 760);
-    assert.equal(await page.locator('.exercise img[loading=lazy]').count(), 760);
+    await page.waitForFunction(count => document.querySelectorAll('.exercise').length === count, items.length);
+    assert.equal(await page.locator('.exercise:visible').count(), items.length);
+    assert.equal(await page.locator('.exercise img[loading=lazy]').count(), items.length);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     const visibleNumbers = () => page.locator('.exercise:visible').evaluateAll(nodes => nodes.map(node => Number(node.id.slice(9))));
     await page.locator('#scope').selectOption('latest');
@@ -140,7 +140,7 @@ const {pathToFileURL} = require('node:url');
     assert.equal(await page.locator('.exercise:visible').count(), 0);
     assert.equal(await page.locator('#empty').isVisible(), true);
     await page.locator('#clear').click();
-    assert.equal(await page.locator('.exercise:visible').count(), 760);
+    assert.equal(await page.locator('.exercise:visible').count(), items.length);
     // Deep links restore the exact exercise and edition in a fresh load.
     await page.goto(localURL + '#edition=female&exercise=' + target.number);
     await page.waitForFunction(() => document.querySelector('dialog').open);
@@ -206,7 +206,7 @@ const {pathToFileURL} = require('node:url');
     assert.equal(await page.locator('#notice').isVisible(), true);
     assert.equal(await page.locator('#scope').isDisabled(), true);
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({result: 'PASS', exercises: 760, mode: 'file:// synthetic editions over catalog names', screenshots: temporary}));
+    console.log(JSON.stringify({result: 'PASS', exercises: items.length, mode: 'file:// synthetic editions over catalog names', screenshots: temporary}));
   } finally {
     if (browser) await browser.close();
     // Retain the disposable static fixture and screenshots for visual review.
