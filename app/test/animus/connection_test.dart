@@ -209,7 +209,7 @@ void main() {
   for (final entry in {
     AnimusProbeResult.verificationUnavailable:
         AnimusConnectionIssue.verificationUnavailable,
-    AnimusProbeResult.differentAccount: AnimusConnectionIssue.accountChanged,
+    AnimusProbeResult.differentAccount: AnimusConnectionIssue.differentAccount,
     AnimusProbeResult.serviceUnavailable:
         AnimusConnectionIssue.serviceUnavailable,
     AnimusProbeResult.offline: AnimusConnectionIssue.offline,

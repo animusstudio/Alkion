@@ -37,6 +37,9 @@ enum AnimusConnectionIssue {
   timeout,
   invalidResponse,
 
+  /// This profile stays attached to another, verified or in-use account.
+  differentAccount,
+
   /// Disconnect cleared this device, but the provider did not confirm the
   /// revocation (unreachable, refused, or no revocation endpoint).
   serverSignOutUnconfirmed,
@@ -260,7 +263,7 @@ final class AnimusConnectionController extends ChangeNotifier {
       case AnimusProbeResult.differentAccount:
         _publish(
           AnimusConnectionState.unavailable,
-          AnimusConnectionIssue.accountChanged,
+          AnimusConnectionIssue.differentAccount,
         );
       case AnimusProbeResult.serviceUnavailable:
         _publish(

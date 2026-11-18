@@ -572,7 +572,7 @@ void main() {
     }
 
     test(
-      'a refused account change reports a changed account, not unavailable',
+      'a refused account change names the other linked account, not unavailable',
       () async {
         expect(
           await probe.verify(session('owner')),
@@ -587,7 +587,7 @@ void main() {
         await controller.connect();
         await controller.confirm();
         expect(controller.state, AnimusConnectionState.unavailable);
-        expect(controller.issue, AnimusConnectionIssue.accountChanged);
+        expect(controller.issue, AnimusConnectionIssue.differentAccount);
         expect(http.calls, calls);
         controller.dispose();
       },

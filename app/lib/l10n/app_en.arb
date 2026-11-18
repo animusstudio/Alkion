@@ -1157,6 +1157,7 @@
   "animusUnavailable": "Sign-in is unavailable. Try again.",
   "animusSignInTimedOut": "Sign-in timed out before it was finished. Try again.",
   "animusSignOutUnconfirmed": "Disconnected on this device. The server sign-out could not be confirmed.",
+  "animusDifferentAccount": "This profile is linked to a different Animus account. Connect with that account to continue.",
   "animusDisconnectBody": "Disconnect on this device? Local workouts, drafts, pending changes and backups are kept. This does not sign you out of your browser.",
   "animusReadOnly": "Send one selected workout from History after confirming its account, data space and included exercises. Sending is manual; local workouts and backups remain available.",
   "alkionEntryBody": "Sign in with Animus, or train fully offline.",

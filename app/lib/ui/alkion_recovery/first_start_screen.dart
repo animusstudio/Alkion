@@ -715,6 +715,7 @@ String animusEntryStatus(AppLocalizations l, AnimusConnectionController c) =>
         AnimusConnectionIssue.secureStorageUnavailable =>
           l.animusSecureStorageUnavailable,
         AnimusConnectionIssue.accountChanged => l.animusAccountChanged,
+        AnimusConnectionIssue.differentAccount => l.animusDifferentAccount,
         AnimusConnectionIssue.sessionExpired => l.animusSessionExpired,
         AnimusConnectionIssue.offline => l.animusOffline,
         AnimusConnectionIssue.timeout => l.animusTimeout,
