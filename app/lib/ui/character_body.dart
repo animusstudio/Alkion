@@ -26,7 +26,7 @@ class CharacterBodyController extends ChangeNotifier {
   double _pitch = 0;
   double _zoom = 1;
   Offset _pan = Offset.zero;
-  // Cumulative modulo turn is independent of delayed autoplay telemetry.
+  // Cumulative modulo turn is independent of delayed intro-turn telemetry.
   // JS applies its difference at the current rendered angle, even when the
   // native queue replaces intermediate drag messages with the latest one.
   double _turn = 0;
@@ -185,6 +185,7 @@ class CharacterBody extends StatefulWidget {
     this.pickingEnabled = false,
     this.selectedRegion,
     this.onStatus,
+    this.onIntroStarted,
     this.fallback,
   });
 
@@ -201,6 +202,10 @@ class CharacterBody extends StatefulWidget {
   final bool pickingEnabled;
   final WorkloadMuscle? selectedRegion;
   final ValueChanged<CharacterBodyStatus>? onStatus;
+
+  /// Called once per mount, when the renderer reports that the intro turn is
+  /// running. A mount that never draws its intro never calls it.
+  final VoidCallback? onIntroStarted;
   final Widget? fallback;
 
   @override
@@ -250,6 +255,7 @@ class _CharacterBodyState extends State<CharacterBody>
   Map<String, int>? _rendered;
   Size? _size;
   bool _picking = false;
+  bool _introReported = false;
   _CharacterPick? _queuedPick;
 
   void _invalidatePick() {
@@ -539,10 +545,14 @@ class _CharacterBodyState extends State<CharacterBody>
           _rendered = {for (final key in keys) key: event[key] as int};
         }
       }
+      if (event['intro'] == true && !_introReported) {
+        _introReported = true;
+        widget.onIntroStarted?.call();
+      }
       final yaw = event['yaw'];
       if (yaw is num) {
         // Acknowledgments belong to the exact absolute anchor and cumulative
-        // turn. A delayed autoplay report cannot overwrite a newer gesture.
+        // turn. A delayed intro report cannot overwrite a newer gesture.
         widget.controller.acknowledgeRenderedYaw(
           yaw: yaw.toDouble(),
           command: event['command'],

@@ -158,17 +158,22 @@ String _status(AppLocalizations l, AnimusConnectionController connection) {
   return switch (connection.state) {
     AnimusConnectionState.disabled => '',
     AnimusConnectionState.misconfigured => l.animusMisconfigured,
-    AnimusConnectionState.disconnected => l.animusDisconnected,
+    AnimusConnectionState.disconnected =>
+      connection.issue == AnimusConnectionIssue.serverSignOutUnconfirmed
+          ? l.animusSignOutUnconfirmed
+          : l.animusDisconnected,
     AnimusConnectionState.authenticating => l.animusAuthenticating,
     AnimusConnectionState.awaitingConfirmation => l.animusAwaitingConfirmation,
     AnimusConnectionState.verifying => l.animusVerifying,
     AnimusConnectionState.verified => l.animusVerified,
     AnimusConnectionState.accessDenied => l.animusAccessDenied,
     AnimusConnectionState.cancelled => l.animusCancelled,
+    AnimusConnectionState.timedOut => l.animusSignInTimedOut,
     AnimusConnectionState.unavailable => switch (connection.issue) {
       AnimusConnectionIssue.secureStorageUnavailable =>
         l.animusSecureStorageUnavailable,
       AnimusConnectionIssue.accountChanged => l.animusAccountChanged,
+      AnimusConnectionIssue.differentAccount => l.animusDifferentAccount,
       AnimusConnectionIssue.sessionExpired => l.animusSessionExpired,
       AnimusConnectionIssue.offline => l.animusOffline,
       AnimusConnectionIssue.timeout => l.animusTimeout,

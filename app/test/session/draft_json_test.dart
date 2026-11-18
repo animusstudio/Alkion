@@ -11,6 +11,9 @@ import 'package:alkion/data/active_session_draft.dart';
 import 'package:alkion/data/finished_session_store.dart';
 import 'package:alkion/data/models.dart';
 import 'package:alkion/session/active_session_controller.dart';
+import 'package:alkion/data/session_repository.dart'
+    show CatalogLastSet, CatalogLoadReference;
+import 'package:alkion/domain/catalog_execution.dart';
 
 BlockState _block({int? restSeconds}) {
   final ex = Exercise(
@@ -337,6 +340,115 @@ void main() {
         ),
         isNull,
       );
+    });
+  });
+
+  group('catalog prefill draft key', () {
+    final selection = CatalogSelectionEvidence(
+      exerciseId: 'cat',
+      contextId: 'cat-context',
+      contextRevision: 1,
+      displayLabel: 'Synthetic run',
+      profile: CatalogMeasurementProfileEvidence.forKey(
+        'duration_distance_optional',
+      ),
+    );
+    CatalogMetricEvidence v(String metric, String text) =>
+        CatalogMetricEvidence.fromInput(
+          text,
+          metric: metric,
+          unit: CatalogMetricEvidence.defaultUnit(metric),
+        );
+    SessionDraft draft() {
+      final e = Exercise(
+        id: 'cat',
+        name: 'Run',
+        slug: 'run',
+        muscleGroup: '',
+        compound: false,
+        plateStepKg: 2.5,
+        isTemplate: false,
+      );
+      return SessionDraft(
+        templateId: null,
+        name: 'Prefill',
+        focus: '',
+        startedAt: DateTime(2026, 11, 9),
+        blocks: [
+          buildCatalogBlock(
+            resolved: ResolvedSlot(
+              exercise: e,
+              workSets: 2,
+              warmupSets: 1,
+              repLow: 8,
+              repHigh: 12,
+              rirLow: null,
+              rirHigh: null,
+            ),
+            selection: selection,
+            reference: CatalogLoadReference(
+              lastSets: [
+                CatalogLastSet(
+                  isWarmup: true,
+                  metrics: {'duration': v('duration', '120')},
+                ),
+                CatalogLastSet(
+                  isWarmup: false,
+                  metrics: {
+                    'duration': v('duration', '60.000000000000000001'),
+                    'distance': v('distance', '200'),
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    test('catalogLastSets and the prefilled values round-trip', () {
+      final source = draft();
+      final json = jsonDecode(jsonEncode(source.toJson())) as Map;
+      final decoded = DraftStore.tryDecode(jsonEncode(json))!;
+      expect(jsonEncode(decoded.toJson()), jsonEncode(json));
+      final block = decoded.blocks.single;
+      expect(block.catalogLastSets[selection.compatibilityKey], hasLength(2));
+      expect(
+        block.workingSets.first.catalog!.metrics['duration']!.raw,
+        '60.000000000000000001',
+      );
+      expect(block.warmupSets.single.catalog!.metrics['duration']!.raw, '120');
+      // Prefilled values live in the draft, so restart keeps them untouched.
+      expect(block.allSets.any((s) => s.catalogTouched), isFalse);
+      // The second working set has no same-numbered set and this profile no
+      // top set: it opens empty.
+      expect(block.workingSets.last.catalog!.metrics, isEmpty);
+    });
+
+    test('a draft written before the key existed still loads', () {
+      final json = jsonDecode(jsonEncode(draft().toJson())) as Map;
+      ((json['blocks'] as List).single as Map).remove('catalogLastSets');
+      final decoded = DraftStore.tryDecode(jsonEncode(json))!;
+      expect(decoded.blocks.single.catalogLastSets, isEmpty);
+      expect(
+        decoded
+            .blocks
+            .single
+            .workingSets
+            .first
+            .catalog!
+            .metrics['distance']!
+            .raw,
+        '200',
+      );
+    });
+
+    test('a malformed last set is refused', () {
+      final json = jsonDecode(jsonEncode(draft().toJson())) as Map;
+      final sets =
+          ((json['blocks'] as List).single as Map)['catalogLastSets'] as Map;
+      (sets.values.single as List).first['future'] = true;
+      expect(DraftStore.tryDecode(jsonEncode(json)), isNull);
     });
   });
 }

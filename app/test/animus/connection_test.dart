@@ -209,6 +209,7 @@ void main() {
   for (final entry in {
     AnimusProbeResult.verificationUnavailable:
         AnimusConnectionIssue.verificationUnavailable,
+    AnimusProbeResult.differentAccount: AnimusConnectionIssue.differentAccount,
     AnimusProbeResult.serviceUnavailable:
         AnimusConnectionIssue.serviceUnavailable,
     AnimusProbeResult.offline: AnimusConnectionIssue.offline,
@@ -247,6 +248,82 @@ void main() {
     },
   );
 
+  test(
+    'a browser timeout is timed out, not cancelled, and keeps no account',
+    () async {
+      auth.failure = const AnimusAuthFailure(AnimusAuthFailureKind.timedOut);
+      await controller.connect();
+      expect(controller.state, AnimusConnectionState.timedOut);
+      expect(controller.issue, isNull);
+      expect(controller.identity, isNull);
+      expect(controller.busy, isFalse);
+      auth.failure = null;
+      await controller.connect();
+      expect(controller.state, AnimusConnectionState.awaitingConfirmation);
+    },
+  );
+
+  test(
+    'Connect pre-clears locally and never signs out at the provider',
+    () async {
+      await controller.connect();
+      await controller.confirm();
+      await controller.connect();
+      expect(controller.state, AnimusConnectionState.awaitingConfirmation);
+      expect(auth.signOuts, 0);
+    },
+  );
+
+  test(
+    'Disconnect signs out and reports only an unconfirmed revocation',
+    () async {
+      await controller.connect();
+      await controller.confirm();
+      await controller.disconnect();
+      expect(auth.signOuts, 1);
+      expect(controller.state, AnimusConnectionState.disconnected);
+      expect(controller.issue, isNull);
+
+      await controller.connect();
+      await controller.confirm();
+      auth.revoked = false;
+      await controller.disconnect();
+      expect(auth.signOuts, 2);
+      expect(controller.state, AnimusConnectionState.disconnected);
+      expect(controller.issue, AnimusConnectionIssue.serverSignOutUnconfirmed);
+      expect(controller.identity, isNull);
+    },
+  );
+
+  test('a late unconfirmed sign-out never overrides a newer Connect', () async {
+    await controller.connect();
+    await controller.confirm();
+    auth.signOutGate = Completer<bool>();
+    final signingOut = controller.disconnect();
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.state, AnimusConnectionState.disconnected);
+    await controller.connect();
+    expect(controller.state, AnimusConnectionState.awaitingConfirmation);
+    auth.signOutGate!.complete(false);
+    await signingOut;
+    expect(controller.state, AnimusConnectionState.awaitingConfirmation);
+    expect(controller.issue, isNull);
+  });
+
+  test('a late sign-out failure never overrides a newer Connect', () async {
+    await controller.connect();
+    await controller.confirm();
+    auth.signOutGate = Completer<bool>();
+    final signingOut = controller.disconnect();
+    await Future<void>.delayed(Duration.zero);
+    await controller.connect();
+    expect(controller.state, AnimusConnectionState.awaitingConfirmation);
+    auth.signOutGate!.completeError(const AnimusSecretStoreUnavailable());
+    await signingOut;
+    expect(controller.state, AnimusConnectionState.awaitingConfirmation);
+    expect(controller.issue, isNull);
+  });
+
   test('arbitrary exception detail is reduced to a safe enum', () async {
     auth.failure = StateError('private provider response');
     await controller.connect();
@@ -279,6 +356,9 @@ AnimusAuthSession _session({String subject = 'one', bool expired = false}) =>
 
 class _Auth implements AnimusAuthPort {
   int calls = 0, retains = 0, refreshes = 0;
+  int signOuts = 0;
+  bool revoked = true;
+  Completer<bool>? signOutGate;
   AnimusAuthSession? session = _session(), fresh = _session(), restored;
   Completer<AnimusAuthSession?>? loginGate;
   Completer<void>? retainGate;
@@ -320,6 +400,14 @@ class _Auth implements AnimusAuthPort {
   @override
   Future<void> cancel() async {
     calls++;
+  }
+
+  @override
+  Future<bool> signOut() async {
+    signOuts++;
+    await disconnect();
+    if (signOutGate != null) return signOutGate!.future;
+    return revoked;
   }
 
   @override

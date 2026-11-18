@@ -2,14 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/data/models.dart';
+import 'package:alkion/domain/catalog_execution.dart';
 import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/session/active_session_controller.dart';
 import 'package:alkion/session/session_header.dart';
 import 'package:alkion/units/unit_service.dart';
 import 'package:alkion/theme/alkion_icon.dart';
+import 'package:alkion/theme/app_theme.dart';
+import 'package:alkion/theme/tokens.dart';
+import 'package:alkion/widgets/fit_label.dart';
 
 import '../support/l10n_harness.dart';
 import '../support/icon_finders.dart';
+import '../support/layout_expect.dart';
 
 const _ex = Exercise(
   id: 'lc',
@@ -19,6 +24,63 @@ const _ex = Exercise(
   compound: false,
   plateStepKg: 2.5,
   isTemplate: false,
+);
+
+/// A catalog set in a load-and-reps context; an empty [load] or [reps]
+/// leaves that value out.
+SetState _typed(
+  String id, {
+  bool warmup = false,
+  bool done = false,
+  String load = '18',
+  String reps = '12',
+}) => SetState(
+  id: id,
+  weightKg: 0,
+  reps: 0,
+  rir: null,
+  isWarmup: warmup,
+  done: done,
+  catalog: CatalogSetEvidence(
+    selection: CatalogSelectionEvidence(
+      exerciseId: _ex.id,
+      contextId: 'machine-a',
+      contextRevision: 1,
+      profile: CatalogMeasurementProfileEvidence.forKey('load_reps'),
+      displayLabel: 'Seated leg curl, single leg with ankle strap',
+      contextLabel: 'Machine A',
+      resistanceSource: 'external',
+      loadConvention: 'reported_mass',
+    ),
+    metrics: {
+      'reported_load': CatalogMetricEvidence.fromInput(
+        load,
+        metric: 'reported_load',
+        unit: 'kg',
+      ),
+      'repetitions': CatalogMetricEvidence.fromInput(
+        reps,
+        metric: 'repetitions',
+        unit: 'count',
+      ),
+    },
+  ),
+);
+
+BlockState _blockOf(List<SetState> warm, List<SetState> work) => BlockState(
+  exercise: _ex,
+  resolved: const ResolvedSlot(
+    exercise: _ex,
+    workSets: 1,
+    warmupSets: 0,
+    repLow: 8,
+    repHigh: 10,
+    rirLow: 1,
+    rirHigh: 1,
+  ),
+  warmupSets: warm,
+  workingSets: work,
+  expanded: true,
 );
 
 final _draft = SessionDraft(
@@ -33,6 +95,19 @@ void main() {
   late int adds, skips, menus, mins;
   setUp(() => adds = skips = menus = mins = 0);
 
+  // The remaining line is painted: read its fraction and fill from the
+  // painter rather than from a laid-out box.
+  final track = find.byKey(const Key('rest-remaining-track'));
+  RemainingLinePainter linePainter(WidgetTester tester) =>
+      tester
+              .widget<CustomPaint>(
+                find.descendant(of: track, matching: find.byType(CustomPaint)),
+              )
+              .painter!
+          as RemainingLinePainter;
+  double fillOf(WidgetTester tester) => linePainter(tester).fraction.value;
+  Color fillColorOf(WidgetTester tester) => linePainter(tester).fill;
+
   Widget header({
     DateTime? restStart,
     int restTotal = 0,
@@ -40,6 +115,7 @@ void main() {
     bool showRestRow = false,
     Locale locale = const Locale('en'),
     TextDirection direction = TextDirection.ltr,
+    String nextLabel = 'Next · Lying leg curl · Set 1 · 40kg × 8',
   }) => wrapL10n(
     Directionality(
       textDirection: direction,
@@ -53,7 +129,7 @@ void main() {
         restTotal: restTotal,
         restEndedAt: restEndedAt,
         showRestRow: showRestRow,
-        nextLabel: 'Next · Lying leg curl · set 1 · 40kg × 8',
+        nextLabel: nextLabel,
         onMinimize: () => mins++,
         onMenu: () => menus++,
         onAdd30s: () => adds++,
@@ -106,7 +182,7 @@ void main() {
       '1:30',
     );
     expect(
-      find.text('Next · Lying leg curl · set 1 · 40kg × 8'),
+      find.text('Next · Lying leg curl · Set 1 · 40kg × 8'),
       findsOneWidget,
     );
     final add = find.byKey(const Key('rest-add'));
@@ -130,7 +206,7 @@ void main() {
       expect(find.text('RESTED'), findsOneWidget);
       expect(find.text('1:24'), findsOneWidget);
       expect(
-        find.text('Next · Lying leg curl · set 1 · 40kg × 8'),
+        find.text('Next · Lying leg curl · Set 1 · 40kg × 8'),
         findsOneWidget,
       );
       expect(find.text('+30s').hitTestable(), findsNothing);
@@ -272,7 +348,7 @@ void main() {
     final skip = find.byKey(const Key('rest-skip'));
     expect(tester.getSize(skip).width, greaterThanOrEqualTo(56));
     expect(tester.getSize(skip).height, greaterThanOrEqualTo(48));
-    final nextLine = find.text('Next · Lying leg curl · set 1 · 40kg × 8');
+    final nextLine = find.text('Next · Lying leg curl · Set 1 · 40kg × 8');
     expect(tester.getSize(nextLine).width, greaterThanOrEqualTo(200));
   });
 
@@ -288,7 +364,7 @@ void main() {
         child: header(restStart: DateTime.now(), restTotal: 90),
       ),
     );
-    final next = find.text('Next · Lying leg curl · set 1 · 40kg × 8');
+    final next = find.text('Next · Lying leg curl · Set 1 · 40kg × 8');
     expect(tester.getSize(next).width, greaterThanOrEqualTo(300));
   });
 
@@ -383,12 +459,8 @@ void main() {
         tester.widget<Text>(find.byKey(const Key('rest-total'))).data,
         endpoint,
       );
-      final track = find.byKey(const Key('rest-remaining-track'));
       expect(tester.getSize(track).height, 2);
-      final fill = tester.widget<FractionallySizedBox>(
-        find.descendant(of: track, matching: find.byType(FractionallySizedBox)),
-      );
-      expect(fill.widthFactor, closeTo(fraction, 0.01));
+      expect(fillOf(tester), closeTo(fraction, 0.01));
       final semantics = tester.widget<Semantics>(
         find.byKey(const Key('rest-remaining-value')),
       );
@@ -409,62 +481,126 @@ void main() {
   ) async {
     await tester.pumpWidget(header());
     expect(find.byKey(const Key('rest-scale')), findsNothing);
-    final fill = tester.widget<FractionallySizedBox>(
-      find.descendant(
-        of: find.byKey(const Key('rest-remaining-track')),
-        matching: find.byType(FractionallySizedBox),
-      ),
-    );
-    expect(fill.widthFactor, closeTo(1 / 14, 0.0001));
+    expect(fillOf(tester), closeTo(1 / 14, 0.0001));
   });
+
+  for (final code in const ['en', 'de', 'es', 'it']) {
+    testWidgets('the Next row fits at 320dp / 2× $code with the exercise', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final l = lookupAppLocalizations(Locale(code));
+      final s = _typed('t', warmup: true);
+      final label = restNextLabel(l, UnitService(), (
+        block: _blockOf([s], []),
+        set: s,
+      ));
+      expect(label, contains('Seated leg curl'));
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(
+            size: Size(320, 900),
+            textScaler: TextScaler.linear(2),
+          ),
+          child: header(
+            showRestRow: true,
+            restStart: DateTime.now(),
+            restTotal: 90,
+            locale: Locale(code),
+            nextLabel: label,
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.text(label), findsOneWidget);
+      expect(find.bySemanticsLabel(label), findsOneWidget);
+      expectNoSplitWords(tester);
+    });
+  }
 
   group('restNextLabel', () {
     final l = lookupAppLocalizations(const Locale('en'));
     final unit = UnitService();
-    BlockState block(List<SetState> warm, List<SetState> work) => BlockState(
-      exercise: _ex,
-      resolved: const ResolvedSlot(
-        exercise: _ex,
-        workSets: 1,
-        warmupSets: 0,
-        repLow: 8,
-        repHigh: 10,
-        rirLow: 1,
-        rirHigh: 1,
-      ),
-      warmupSets: warm,
-      workingSets: work,
-      expanded: true,
+    SetState classic(
+      String id, {
+      double kg = 40,
+      bool warmup = false,
+      bool done = false,
+    }) => SetState(
+      id: id,
+      weightKg: kg,
+      reps: 8,
+      rir: warmup ? null : 1,
+      isWarmup: warmup,
+      done: done,
     );
 
-    test('names the exercise, set and prescription', () {
-      final s = SetState(
-        id: 's',
-        weightKg: 40,
-        reps: 8,
-        rir: 1,
-        isWarmup: false,
-        done: false,
-      );
+    test('the exercise leads while its block has no logged set', () {
+      final s = classic('s');
       expect(
-        restNextLabel(l, unit, (block: block([], [s]), set: s)),
-        'Next · Lying leg curl · set 1 · 40kg × 8',
+        restNextLabel(l, unit, (block: _blockOf([], [s]), set: s)),
+        'Next · Lying leg curl · Set 1 · 40kg × 8',
+      );
+      final w = classic('w', kg: 20, warmup: true);
+      expect(
+        restNextLabel(l, unit, (block: _blockOf([w], []), set: w)),
+        'Next · Lying leg curl · Warm-up · 20kg × 8',
       );
     });
-    test('warm-up variant', () {
-      final w = SetState(
-        id: 'w',
-        weightKg: 20,
-        reps: 8,
-        rir: null,
-        isWarmup: true,
-        done: false,
-      );
+
+    test('after a logged set in the block, only the set and values', () {
+      final w = classic('w', kg: 20, warmup: true, done: true);
+      final s = classic('s');
       expect(
-        restNextLabel(l, unit, (block: block([w], []), set: w)),
-        'Next · Lying leg curl · warm-up · 20kg × 8',
+        restNextLabel(l, unit, (block: _blockOf([w], [s]), set: s)),
+        'Next · Set 1 · 40kg × 8',
       );
     });
+
+    test('a classic set with unavailable values says so', () {
+      final s = classic('s')..weightUnavailable = true;
+      final done = classic('d', done: true);
+      expect(
+        restNextLabel(l, unit, (block: _blockOf([], [done, s]), set: s)),
+        'Next · Set 2 · Values unavailable',
+      );
+    });
+
+    test('catalog sets use the compact values and the same rule', () {
+      final t1 = _typed('t1');
+      expect(
+        restNextLabel(l, unit, (block: _blockOf([], [t1]), set: t1)),
+        'Next · Seated leg curl, single leg with ankle strap · Set 1 · '
+        '18 kg × 12',
+      );
+      final done = _typed('d', done: true);
+      final t2 = _typed('t2', load: '20.5');
+      final warm = _typed('w', warmup: true, load: '10');
+      final b = _blockOf([warm], [done, t2]);
+      expect(
+        restNextLabel(l, unit, (block: b, set: t2)),
+        'Next · Set 2 · 20.5 kg × 12',
+      );
+      expect(
+        restNextLabel(l, unit, (block: b, set: warm)),
+        'Next · Warm-up · 10 kg × 12',
+      );
+    });
+
+    test('a catalog set without values shows none', () {
+      final done = _typed('d', done: true);
+      final empty = _typed('e', load: '', reps: '');
+      final repsOnly = _typed('r', load: '');
+      final b = _blockOf([], [done, empty, repsOnly]);
+      expect(restNextLabel(l, unit, (block: b, set: empty)), 'Next · Set 2');
+      expect(
+        restNextLabel(l, unit, (block: b, set: repsOnly)),
+        'Next · Set 3 · 12 reps',
+      );
+    });
+
     test('nothing left: finish', () {
       expect(restNextLabel(l, unit, null), 'Next · Finish workout');
     });
@@ -472,22 +608,8 @@ void main() {
     test(
       'while a logged set is open for correction, names the real next set',
       () {
-        final s1 = SetState(
-          id: 's1',
-          weightKg: 40,
-          reps: 8,
-          rir: 1,
-          isWarmup: false,
-          done: true,
-        );
-        final s2 = SetState(
-          id: 's2',
-          weightKg: 42.5,
-          reps: 8,
-          rir: 1,
-          isWarmup: false,
-          done: false,
-        );
+        final s1 = classic('s1', done: true);
+        final s2 = classic('s2', kg: 42.5);
         final c = ActiveSessionController()
           ..seedForTest(
             SessionDraft(
@@ -496,16 +618,219 @@ void main() {
               focus: '',
               startedAt: DateTime(2026, 9, 29, 10),
               blocks: [
-                block([], [s1, s2]),
+                _blockOf([], [s1, s2]),
               ],
             ),
           );
         c.focusSet(s1);
         expect(
           restNextLabel(l, unit, c.nextPendingSet),
-          'Next · Lying leg curl · set 2 · 42.5kg × 8',
+          'Next · Set 2 · 42.5kg × 8',
         );
       },
     );
   });
+
+  // ── Fluid rest line (round 2, A4) and the header accents (A5) ────────────
+
+  // Every frame callback still registered: a running ticker holds one.
+  int frameCallbacks(WidgetTester tester) =>
+      tester.binding.transientCallbackCount;
+  // One theme instance for every pump: a fresh `buildTheme` per pump makes
+  // MaterialApp's implicit theme animations run and hold frame callbacks.
+  final themes = {
+    for (final b in Brightness.values) b: buildTheme(b, accents[0]),
+  };
+  Widget steady({
+    DateTime? restStart,
+    int restTotal = 0,
+    DateTime? restEndedAt,
+    bool showRestRow = false,
+    Brightness brightness = Brightness.dark,
+  }) => MaterialApp(
+    theme: themes[brightness],
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
+    home: Scaffold(
+      body: SessionHeader(
+        draft: _draft,
+        elapsed: Duration.zero,
+        doneWork: 3,
+        totalWork: 12,
+        prCount: 0,
+        restStart: restStart,
+        restTotal: restTotal,
+        restEndedAt: restEndedAt,
+        showRestRow: showRestRow || restStart != null,
+        nextLabel: 'Next',
+        onMinimize: () {},
+        onMenu: () {},
+        onAdd30s: () {},
+        onSkip: () {},
+      ),
+    ),
+  );
+
+  testWidgets('with animations on the rest fill moves between second ticks', (
+    tester,
+  ) async {
+    await tester.pumpWidget(steady(restStart: DateTime.now(), restTotal: 90));
+    final clock = tester.widget<Text>(find.byKey(const Key('rest-clock'))).data;
+    final first = fillOf(tester);
+    expect(frameCallbacks(tester), greaterThan(0));
+    CustomPaint line() => tester.widget<CustomPaint>(
+      find.descendant(of: track, matching: find.byType(CustomPaint)),
+    );
+    final painted = line();
+    await tester.pump(const Duration(milliseconds: 250));
+    final quarter = fillOf(tester);
+    // A tick repaints the same painter; nothing was rebuilt.
+    expect(line(), same(painted));
+    await tester.pump(const Duration(milliseconds: 250));
+    final half = fillOf(tester);
+    // A quarter second of a 90 s rest each, well inside one second.
+    expect(first - quarter, closeTo(0.25 / 90, 0.001));
+    expect(quarter - half, closeTo(0.25 / 90, 0.001));
+    // The line sits behind its own repaint boundary.
+    expect(
+      find.descendant(of: track, matching: find.byType(RepaintBoundary)),
+      findsOneWidget,
+    );
+    // The countdown text keeps its once-per-second step.
+    expect(
+      tester.widget<Text>(find.byKey(const Key('rest-clock'))).data,
+      clock,
+    );
+  });
+
+  testWidgets('+30s retargets the moving fill at once', (tester) async {
+    final start = DateTime.now().subtract(const Duration(seconds: 45));
+    await tester.pumpWidget(steady(restStart: start, restTotal: 90));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(fillOf(tester), closeTo(45 / 90, 0.01));
+    await tester.pumpWidget(steady(restStart: start, restTotal: 120));
+    expect(fillOf(tester), closeTo(75 / 120, 0.01));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(fillOf(tester), lessThan(75 / 120));
+    expect(frameCallbacks(tester), greaterThan(0));
+  });
+
+  testWidgets('under reduced motion the fill steps per second with no ticker', (
+    tester,
+  ) async {
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        FakeAccessibilityFeatures.allOn;
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    final start = DateTime.now();
+    await tester.pumpWidget(steady(restStart: start, restTotal: 90));
+    expect(fillOf(tester), 1.0);
+    expect(frameCallbacks(tester), 0);
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(fillOf(tester), 1.0);
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    // The header's next second-tick rebuild moves it by one whole step.
+    await tester.pumpWidget(
+      steady(
+        restStart: start.subtract(const Duration(seconds: 1)),
+        restTotal: 90,
+      ),
+    );
+    expect(fillOf(tester), 89 / 90);
+    expect(frameCallbacks(tester), 0);
+  });
+
+  testWidgets('the ticker stops when no rest runs, off screen and on dispose', (
+    tester,
+  ) async {
+    await tester.pumpWidget(steady());
+    expect(frameCallbacks(tester), 0);
+    await tester.pumpWidget(steady(showRestRow: true));
+    expect(frameCallbacks(tester), 0);
+
+    await tester.pumpWidget(steady(restStart: DateTime.now(), restTotal: 90));
+    expect(frameCallbacks(tester), greaterThan(0));
+    // Rest over (Skip, or the countdown reached 0): the stepped row returns.
+    await tester.pumpWidget(
+      steady(showRestRow: true, restEndedAt: DateTime.now()),
+    );
+    // Hiding +30s/Skip moves focus, whose one-off rebuild lands next frame.
+    await tester.pump();
+    expect(frameCallbacks(tester), 0);
+
+    // A covered route disables its tickers; the line stops and resumes.
+    final start = DateTime.now();
+    Widget gated(bool enabled) => TickerMode(
+      enabled: enabled,
+      child: steady(restStart: start, restTotal: 90),
+    );
+    await tester.pumpWidget(gated(true));
+    expect(frameCallbacks(tester), greaterThan(0));
+    await tester.pumpWidget(gated(false));
+    expect(frameCallbacks(tester), 0);
+    await tester.pumpWidget(gated(true));
+    expect(frameCallbacks(tester), greaterThan(0));
+
+    await tester.pumpWidget(const SizedBox());
+    expect(frameCallbacks(tester), 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a rest already run out starts no ticker', (tester) async {
+    // Inside the second before the screen ticker stops a finished rest.
+    await tester.pumpWidget(
+      steady(
+        restStart: DateTime.now().subtract(const Duration(milliseconds: 90500)),
+        restTotal: 91,
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(fillOf(tester), 0);
+    expect(frameCallbacks(tester), 0);
+  });
+
+  for (final brightness in Brightness.values) {
+    WorkoutTokens tokensFor(Color accent) => brightness == Brightness.dark
+        ? WorkoutTokens.dark(accent)
+        : WorkoutTokens.light(accent);
+
+    testWidgets('the rest fill and set progress use the accent in '
+        '${brightness.name}; their text stays neutral', (tester) async {
+      final tokens = tokensFor(accents[0]);
+      await tester.pumpWidget(steady(brightness: brightness));
+      expect(fillColorOf(tester), tokens.accentText);
+      expect(fillOf(tester), closeTo(3 / 12, 0.0001));
+      final progress = tester.widget<FitLabel>(
+        find.byKey(const Key('session-progress')),
+      );
+      expect(progress.style?.color, tokens.dim);
+
+      await tester.pumpWidget(
+        steady(
+          restStart: DateTime.now(),
+          restTotal: 90,
+          brightness: brightness,
+        ),
+      );
+      expect(fillColorOf(tester), tokens.accentText);
+      expect(
+        tester.widget<Text>(find.byKey(const Key('rest-clock'))).style?.color,
+        tokens.text,
+      );
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    test('every accent reads at 3:1 on the rest track and page in '
+        '${brightness.name}', () {
+      for (final accent in accents) {
+        final t = tokensFor(accent);
+        for (final ground in [t.surface3, t.bg]) {
+          expect(
+            contrastRatio(t.accentText, ground),
+            greaterThanOrEqualTo(3),
+            reason: '$accent on $ground',
+          );
+        }
+      }
+    });
+  }
 }

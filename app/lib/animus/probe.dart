@@ -18,6 +18,9 @@ enum AnimusProbeResult {
   unauthenticated,
   accessDenied,
   verificationUnavailable,
+
+  /// This profile stays attached to another, verified or in-use account.
+  differentAccount,
   serviceUnavailable,
   offline,
   timeout,
@@ -150,6 +153,8 @@ final class AnimusProbe implements AnimusProbePort {
         503 => AnimusProbeResult.serviceUnavailable,
         _ => AnimusProbeResult.invalidResponse,
       });
+    } on AnimusAttachmentMismatch {
+      return fence(AnimusProbeResult.differentAccount);
     } on AnimusRecoveryFailure {
       return fence(AnimusProbeResult.serviceUnavailable);
     } on StoreException {

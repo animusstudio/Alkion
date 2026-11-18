@@ -2,14 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:alkion/data/models.dart';
+import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/session/active_session_controller.dart';
 import 'package:alkion/session/live_set_card.dart';
+import 'package:alkion/theme/app_theme.dart';
+import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/units/unit_service.dart';
 import 'package:alkion/util/dates.dart';
 import 'package:alkion/widgets/ruler_picker.dart';
 
 import '../support/app_fonts.dart';
 import '../support/l10n_harness.dart';
+import '../support/layout_expect.dart';
 import '../support/rir_expect.dart';
 
 const _ex = Exercise(
@@ -46,6 +50,8 @@ void main() {
     SetState s, {
     int idx = 2,
     ({double weight, int reps, String date})? last,
+    ({int low, int high})? range,
+    Widget? reference,
   }) => LiveSetCard(
     set: s,
     exercise: _ex,
@@ -54,6 +60,8 @@ void main() {
     unit: UnitService(),
     onChanged: () => changes++,
     onMarkNotDone: () => unlogs++,
+    repRange: range,
+    reference: reference,
   );
 
   Widget host(
@@ -352,4 +360,157 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
+
+  BoxDecoration cardDecoration(WidgetTester tester) =>
+      tester
+              .widget<Container>(
+                find
+                    .descendant(
+                      of: find.byType(LiveSetCard),
+                      matching: find.byType(Container),
+                    )
+                    .first,
+              )
+              .decoration!
+          as BoxDecoration;
+
+  testWidgets('the card is the raised surface with a 1dp accent outline', (
+    tester,
+  ) async {
+    await tester.pumpWidget(host(card(_s())));
+    final tokens = WorkoutTokens.dark(accents[0]);
+    final decoration = cardDecoration(tester);
+    expect(decoration.color, tokens.surface2);
+    final border = decoration.border! as Border;
+    expect(border.top.color, tokens.accentText);
+    expect(border.top.width, 1);
+  });
+
+  // The fill barely differs from its block (dark surface/surface2 are
+  // near-identical, light surface2 equals surface3), so the outline carries
+  // the distinction: a non-text UI mark needs 3:1 against both sides.
+  for (final brightness in Brightness.values) {
+    test('the outline reads against the block and the fill in '
+        '${brightness.name}', () {
+      for (final accent in accents) {
+        final t = brightness == Brightness.dark
+            ? WorkoutTokens.dark(accent)
+            : WorkoutTokens.light(accent);
+        for (final ground in [t.surface, t.surface2]) {
+          expect(
+            contrastRatio(t.accentText, ground),
+            greaterThanOrEqualTo(3),
+            reason: '$accent on $ground',
+          );
+        }
+      }
+    });
+  }
+
+  testWidgets('the outline follows the light theme', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(Brightness.light, accents[0]),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(body: SingleChildScrollView(child: card(_s()))),
+      ),
+    );
+    final tokens = WorkoutTokens.light(accents[0]);
+    final decoration = cardDecoration(tester);
+    expect(decoration.color, tokens.surface2);
+    expect((decoration.border! as Border).top.color, tokens.accentText);
+  });
+
+  testWidgets('a rep range is a tag beside the label, read as "Rep range"', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(host(card(_s(), range: (low: 8, high: 12))));
+    expect(find.text('8–12'), findsOneWidget);
+    expect(find.textContaining('Rep range:'), findsNothing);
+    expect(
+      tester.getCenter(find.text('8–12')).dy,
+      closeTo(tester.getCenter(find.text('SET 2')).dy, 2),
+    );
+    expect(
+      tester
+          .getSemantics(find.byKey(const Key('live-rep-range')))
+          .getSemanticsData()
+          .label,
+      'Rep range 8–12',
+    );
+    handle.dispose();
+  });
+
+  testWidgets('a fixed or absent rep range shows no tag', (tester) async {
+    await tester.pumpWidget(host(card(_s(), range: (low: 10, high: 10))));
+    expect(find.byKey(const Key('live-rep-range')), findsNothing);
+    await tester.pumpWidget(host(card(_s())));
+    expect(find.byKey(const Key('live-rep-range')), findsNothing);
+  });
+
+  testWidgets('tapping the selected RIR chip clears it; no Clear RIR button', (
+    tester,
+  ) async {
+    final s = _s(done: true);
+    await tester.pumpWidget(host(card(s)));
+    expect(find.text('Clear RIR'), findsNothing);
+    await tester.tap(find.byKey(const Key('rir-1')));
+    expect(s.rir, isNull);
+    expect(changes, 1);
+  });
+
+  testWidgets('no legacy fallback caption for unavailable values', (
+    tester,
+  ) async {
+    final s = _s()..weightUnavailable = true;
+    expect(s.weightAvailable, isFalse);
+    await tester.pumpWidget(host(card(s)));
+    expect(find.textContaining('legacy'), findsNothing);
+  });
+
+  testWidgets('without a reference the card keeps no gap for it', (
+    tester,
+  ) async {
+    const marker = SizedBox(key: Key('ref'), height: 20);
+    await tester.pumpWidget(host(card(_s(), reference: marker)));
+    final withRef = tester.getSize(find.byType(LiveSetCard)).height;
+    await tester.pumpWidget(host(card(_s())));
+    final without = tester.getSize(find.byType(LiveSetCard)).height;
+    // Only the reference and its 10dp gap go.
+    expect(withRef - without, 30);
+  });
+
+  for (final code in ['en', 'de', 'it', 'es']) {
+    testWidgets('label, range tag and last line fit 320dp / 2.0x ($code)', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(
+            size: Size(320, 1400),
+            textScaler: TextScaler.linear(2.0),
+          ),
+          child: host(
+            card(
+              _s(done: true),
+              idx: 12,
+              range: (low: 10, high: 15),
+              last: (weight: 142.5, reps: 12, date: '2026-09-01'),
+            ),
+            locale: Locale(code),
+            width: 262,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('10–15'), findsOneWidget);
+      expectNoSplitWords(tester);
+    });
+  }
 }

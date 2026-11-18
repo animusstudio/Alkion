@@ -53,7 +53,6 @@ class SetValuesEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = context.tokens;
     final l = AppLocalizations.of(context);
 
     // Text keeps the card's inset; the rulers run the card's full width so
@@ -66,13 +65,7 @@ class SetValuesEditor extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        inset(
-          SetFieldGuide(
-            label: l.sessionWeight,
-            color: tokens.accentText,
-            guide: tokens.lineStrong,
-          ),
-        ),
+        inset(SetFieldGuide(label: l.sessionWeight, unit: unit.uLabel)),
         RulerPicker(
           key: const Key('live-weight'),
           unitLabel: unit.uLabel,
@@ -90,13 +83,7 @@ class SetValuesEditor extends StatelessWidget {
           onTapValue: () => _typeWeight(context, l),
         ),
         const SizedBox(height: 12),
-        inset(
-          SetFieldGuide(
-            label: l.sessionReps,
-            color: tokens.accentText,
-            guide: tokens.lineStrong,
-          ),
-        ),
+        inset(SetFieldGuide(label: l.sessionReps, unit: l.sessionRepsUnit)),
         RulerPicker(
           key: const Key('live-reps'),
           showMinorTicks: false,
@@ -166,42 +153,77 @@ class SetValuesEditor extends StatelessWidget {
   }
 }
 
-/// The marker is decoration; the field name remains ordinary localized text.
+/// The caption above a live ruler: the field name in small dim uppercase on
+/// the left and its [unit] in the accent on the right edge of the same row.
+///
+/// Callers inset it by the card's 16 dp, so the unit lines up with the card's
+/// text edge. An optional [hint] follows the name, or stacks under the row
+/// when the three no longer fit on one line.
 class SetFieldGuide extends StatelessWidget {
-  const SetFieldGuide({
-    super.key,
-    required this.label,
-    this.hint,
-    required this.color,
-    required this.guide,
-  });
+  const SetFieldGuide({super.key, required this.label, this.unit, this.hint});
+
+  /// The localized field name, shown uppercase.
   final String label;
+
+  /// The value's unit (`kg`, `lb`, `reps`, `s`, `m`), drawn in `accentText`.
+  final String? unit;
   final String? hint;
-  final Color color;
-  final Color guide;
+
+  /// Tracking matches the `Tag` and eyebrow labels: 0.06 em.
+  static TextStyle captionStyle(BuildContext context) => WorkoutType.body(
+    size: 12,
+    weight: FontWeight.w500,
+    color: context.tokens.dim,
+    letterSpacing: 0.06 * 12,
+  );
+
+  static TextStyle unitStyle(BuildContext context) =>
+      WorkoutType.mono(size: 12, color: context.tokens.accentText);
+
+  static const double _gap = 12;
+
   @override
   Widget build(BuildContext context) {
-    final style = WorkoutType.body(size: 12, color: context.tokens.dim);
-    Widget marker() => ExcludeSemantics(
-      child: SizedBox.square(
-        dimension: 12,
-        child: CustomPaint(painter: _GuidePainter(color: color, marker: true)),
-      ),
-    );
-    Widget leader() => Expanded(
-      child: ExcludeSemantics(
-        child: SizedBox(
-          height: 12,
-          child: CustomPaint(painter: _GuidePainter(color: guide)),
+    final caption = captionStyle(context);
+    final hintStyle = WorkoutType.body(size: 12, color: context.tokens.dim);
+    final name = label.toUpperCase();
+
+    Widget row({required bool inlineHint}) => Row(
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: [
+        Expanded(
+          child: inlineHint
+              ? FitLabel.rich(
+                  TextSpan(
+                    text: name,
+                    children: [TextSpan(text: '  $hint', style: hintStyle)],
+                  ),
+                  maxLines: 2,
+                  style: caption,
+                )
+              : FitLabel(name, maxLines: 2, style: caption),
         ),
-      ),
+        if (unit != null) ...[
+          const SizedBox(width: _gap),
+          Text(
+            unit!,
+            key: const Key('set-field-unit'),
+            maxLines: 1,
+            softWrap: false,
+            style: unitStyle(context),
+          ),
+        ],
+      ],
     );
+
     // The adjustable ruler below owns the field name and value. Repeating
-    // the visual label adds a duplicate screen-reader stop with no action.
+    // the visual caption adds a duplicate screen-reader stop with no action.
+    if (hint == null) return ExcludeSemantics(child: row(inlineHint: false));
     return ExcludeSemantics(
       child: LayoutBuilder(
         builder: (context, constraints) {
-          double widthOf(String value) {
+          double widthOf(String value, TextStyle style) {
             final painter = TextPainter(
               text: TextSpan(text: value, style: style),
               textDirection: Directionality.of(context),
@@ -213,27 +235,19 @@ class SetFieldGuide extends StatelessWidget {
           }
 
           final stacked =
-              hint != null &&
-              widthOf(label) + widthOf(hint!) + 52 > constraints.maxWidth;
+              widthOf(name, caption) +
+                  widthOf('  $hint', hintStyle) +
+                  (unit == null
+                      ? 0
+                      : _gap + widthOf(unit!, unitStyle(context))) >
+              constraints.maxWidth;
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  marker(),
-                  const SizedBox(width: 8),
-                  Flexible(child: FitLabel(label, maxLines: 2, style: style)),
-                  const SizedBox(width: 8),
-                  leader(),
-                  if (hint != null && !stacked) ...[
-                    const SizedBox(width: 8),
-                    Text(hint!, style: style),
-                  ],
-                ],
-              ),
+              row(inlineHint: !stacked),
               if (stacked) ...[
                 const SizedBox(height: 4),
-                FitLabel(hint!, maxLines: 2, style: style),
+                FitLabel(hint!, maxLines: 2, style: hintStyle),
               ],
             ],
           );
@@ -241,29 +255,4 @@ class SetFieldGuide extends StatelessWidget {
       ),
     );
   }
-}
-
-class _GuidePainter extends CustomPainter {
-  const _GuidePainter({required this.color, this.marker = false});
-  final Color color;
-  final bool marker;
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color;
-    if (marker) {
-      for (var y = 0; y < 3; y++) {
-        for (var x = 0; x < 3; x++) {
-          canvas.drawRect(Rect.fromLTWH(1 + x * 4, 1 + y * 4, 2, 2), paint);
-        }
-      }
-    } else {
-      for (var x = 0.0; x < size.width; x += 4) {
-        canvas.drawRect(Rect.fromLTWH(x, size.height / 2, 1, 1), paint);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_GuidePainter oldDelegate) =>
-      oldDelegate.color != color || oldDelegate.marker != marker;
 }

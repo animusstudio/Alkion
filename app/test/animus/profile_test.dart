@@ -194,6 +194,58 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('a timed-out sign-in reads differently from a cancel', (
+    tester,
+  ) async {
+    final controller = AnimusConnectionController(
+      config: syntheticAnimusConfig(),
+      auth: _Auth()
+        ..failure = const AnimusAuthFailure(AnimusAuthFailureKind.timedOut),
+      probe: _Probe(),
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(panel(controller));
+    await tester.tap(find.text('Connect to Animus'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Sign-in timed out before it was finished. Try again.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('cancelled'), findsNothing);
+    expect(find.text('Connect to Animus'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('Disconnect says when the server sign-out is unconfirmed', (
+    tester,
+  ) async {
+    final auth = _Auth()..revoked = false;
+    final controller = AnimusConnectionController(
+      config: syntheticAnimusConfig(),
+      auth: auth,
+      probe: _Probe(),
+    );
+    addTearDown(controller.dispose);
+    await controller.connect();
+    await controller.confirm();
+    await tester.pumpWidget(panel(controller));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Disconnect'));
+    await tester.tap(find.text('Disconnect'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Disconnect').last);
+    await tester.pumpAndSettle();
+    expect(auth.signOuts, 1);
+    expect(
+      find.text(
+        'Disconnected on this device. The server sign-out could not be confirmed.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('animus-account-identity')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('narrow large-text states fit all locales and both themes', (
     tester,
   ) async {
@@ -266,6 +318,25 @@ void main() {
           await tester.pumpWidget(const SizedBox());
           controller.dispose();
         }
+        final unconfirmed = AnimusConnectionController(
+          config: syntheticAnimusConfig(),
+          auth: _Auth()..revoked = false,
+          probe: _Probe(),
+        );
+        await unconfirmed.connect();
+        await unconfirmed.confirm();
+        await unconfirmed.disconnect();
+        expect(
+          unconfirmed.issue,
+          AnimusConnectionIssue.serverSignOutUnconfirmed,
+        );
+        await tester.pumpWidget(
+          panel(unconfirmed, locale: locale, brightness: brightness),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+        unconfirmed.dispose();
         final invalid = AnimusConnectionController(misconfigured: true);
         await tester.pumpWidget(
           panel(invalid, locale: locale, brightness: brightness),
@@ -293,6 +364,9 @@ AnimusAuthSession _session() => AnimusAuthSession(
 class _Auth implements AnimusAuthPort {
   int calls = 0, retains = 0;
   Completer<AnimusAuthSession?>? pending;
+  int signOuts = 0;
+  bool revoked = true;
+  Completer<bool>? signOutGate;
   Object? failure;
   @override
   Future<AnimusAuthSession?> authorize({
@@ -310,6 +384,14 @@ class _Auth implements AnimusAuthPort {
   @override
   Future<void> retain(AnimusAuthSession session) async {
     retains++;
+  }
+
+  @override
+  Future<bool> signOut() async {
+    signOuts++;
+    await disconnect();
+    if (signOutGate != null) return signOutGate!.future;
+    return revoked;
   }
 
   @override

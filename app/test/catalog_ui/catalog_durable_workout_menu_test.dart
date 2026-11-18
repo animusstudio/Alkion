@@ -11,16 +11,23 @@ import 'package:alkion/data/day_template_repository.dart';
 import 'package:alkion/data/exercise_repository.dart';
 import 'package:alkion/data/models.dart';
 import 'package:alkion/data/session_repository.dart';
+import 'package:alkion/data/session_writer.dart';
+import 'package:alkion/domain/catalog_execution.dart';
 import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/main.dart';
 import 'package:alkion/session/active_session_controller.dart';
 import 'package:alkion/session/active_session_screen.dart';
 import 'package:alkion/shell/session_launcher.dart';
+import 'package:alkion/store/local_store.dart';
 import 'package:alkion/ui/day_editor.dart';
+import 'package:alkion/ui/day_slot_card.dart';
+import 'package:alkion/ui/slot_summary.dart' show SlotSummaryChips;
+import 'package:alkion/units/unit_service.dart';
 import 'package:alkion/widgets/plan_form.dart';
 import 'package:alkion/widgets/stepper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import '../catalog/catalog_fixture.dart';
@@ -54,6 +61,7 @@ class _DurableWorkout {
     WidgetTester tester, {
     String nickname = 'Hotel pulley',
     String? locale,
+    Future<void> Function(AlkionRuntime runtime)? history,
   }) async {
     late Directory temporary;
     late AlkionRuntime runtime;
@@ -75,6 +83,8 @@ class _DurableWorkout {
         await runtime.settings.flushPersistence();
       }
       database = RealZoneDatabase(runtime.store, Zone.current);
+      // Finished workouts from before this one, saved before its draft.
+      await history?.call(runtime);
       final drafts = DraftStore.local(database);
       await drafts.load();
       controller = ActiveSessionController(draftStore: drafts)
@@ -192,6 +202,84 @@ Future<void> _finishPickerPop(
   await tester.pump();
 }
 
+/// Saves a finished workout dated [daysAgo] days back whose working sets in
+/// [selection]'s context carry [values] (load, reps), through the real finish
+/// path.
+Future<void> _finishPast(
+  LocalStore store,
+  CatalogSelectionEvidence selection,
+  List<(String, String)> values, {
+  int daysAgo = 3,
+}) async {
+  const id = 'past-workout';
+  final day = DateTime.now().subtract(Duration(days: daysAgo));
+  final date =
+      '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+  final sets = [
+    for (final (load, reps) in values)
+      CatalogSetEvidence(
+        selection: selection,
+        metrics: {
+          'reported_load': CatalogMetricEvidence.fromInput(
+            load,
+            metric: 'reported_load',
+            unit: 'kg',
+          ),
+          'repetitions': CatalogMetricEvidence.fromInput(
+            reps,
+            metric: 'repetitions',
+            unit: 'count',
+          ),
+        },
+      ),
+  ];
+  final draft = await store.getOptional(
+    "SELECT revision FROM local_state WHERE state_kind='draft' AND state_key='active'",
+  );
+  final revision = await commitWorkflowState(
+    store,
+    PreparedWorkflowState(
+      store,
+      {'draftId': id},
+      {'draftId': id, 'restStart': null, 'restTotal': 0},
+      draft?['revision'] as int? ?? 0,
+    ),
+  );
+  final repo = WorkoutRepository.local(store);
+  await repo.commitPrepared(
+    repo.prepareFinish(
+      write: SessionWrite(
+        id: id,
+        dateIso: date,
+        sets: [
+          for (var i = 0; i < sets.length; i++)
+            SetWrite(
+              id: '$id-set-$i',
+              exerciseId: selection.exerciseId,
+              setNumber: i + 1,
+              weightKg: null,
+              reps: 0,
+              rir: null,
+              isWarmup: false,
+              catalog: sets[i],
+              blockId: '$id-block',
+            ),
+        ],
+      ),
+      baseRevision: 0,
+      setBases: {},
+      recovery: {
+        'draft': {
+          'draftId': id,
+          'sets': [for (final set in sets) set.toJson()],
+        },
+      },
+      draftRevision: revision,
+      draftId: id,
+    ),
+  );
+}
+
 void main() {
   setUpAll(preloadAppFonts);
 
@@ -248,6 +336,65 @@ void main() {
       );
       expect(w.controller.restStart, restStart);
       expect(w.controller.restTotal, 600);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'block menu "setup" to a known machine prefills from its last workout',
+    (tester) async {
+      late CatalogSelectionEvidence station;
+      final w = await _DurableWorkout.open(
+        tester,
+        history: (runtime) async {
+          final catalog = runtime.catalog!;
+          final variant = catalog.bundle.variants.values.firstWhere(
+            (v) => v.equipmentKind == 'machine',
+          );
+          final choice = catalog.newSetup(
+            CatalogChoice.variant(variant.id),
+            'Station machine',
+          );
+          await catalog.materialize(
+            choice,
+            ExerciseRepository.local(runtime.store),
+            locale: 'en',
+          );
+          station = catalog.selectionFor(choice)!;
+          await _finishPast(runtime.store, station, [
+            ('32.50', '10'),
+            ('35', '8'),
+          ]);
+        },
+      );
+      final setIds = [for (final s in w.block.allSets) s.id];
+      // The block's own setup has no history: its sets open empty.
+      expect(
+        w.block.allSets.every(
+          (s) => s.catalog!.metrics['reported_load']?.raw != '32.50',
+        ),
+        isTrue,
+      );
+      await w.openSetup(tester);
+      final known = find.text('Station machine');
+      await tester.ensureVisible(known);
+      await tester.tap(known);
+      await tester.pump(_transition);
+      await _settleUntil(tester, () => w.block.allSets.length > setIds.length);
+      final added = w.block.allSets.last;
+      expect(added.catalog!.selection.contextId, station.contextId);
+      // The first set of that context opens as its first set last time,
+      // stored text and unit verbatim, and stays untouched.
+      expect(added.catalog!.metrics['reported_load']!.raw, '32.50');
+      expect(added.catalog!.metrics['reported_load']!.unit, 'kg');
+      expect(added.catalog!.metrics['repetitions']!.raw, '10');
+      expect(added.catalogTouched, isFalse);
+      expect(w.controller.liveSet!.set, same(added));
+      final key = station.compatibilityKey;
+      expect(w.block.catalogLastSets[key], hasLength(2));
+      expect(w.block.lastTop?.weight, 35);
+      // The card shows the last top set as one dim line.
+      expect(find.text('last 35 kg × 8 · 3d ago'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -372,27 +519,49 @@ void main() {
       await tester.pump();
       await _settleUntil(
         tester,
-        () => find.byKey(const Key('metric-duration')).evaluate().isNotEmpty,
+        () => find.byType(DaySlotCard).evaluate().length == 2,
       );
       expect(find.byType(DayEditor), findsOneWidget);
     }
 
-    Finder working(int index) => find
-        .byWidgetPredicate(
-          (widget) =>
-              widget is WStepper && widget.semanticLabel == 'Working sets',
-        )
-        .at(index);
+    // A loaded day starts collapsed; one card is open at a time.
+    Future<void> expand(int index) async {
+      final toggle = find
+          .byWidgetPredicate(
+            (widget) =>
+                widget.key is ValueKey<String> &&
+                (widget.key! as ValueKey<String>).value.startsWith(
+                  'day-slot-expand-',
+                ),
+          )
+          .at(index);
+      await tester.ensureVisible(toggle);
+      await tester.tap(toggle);
+      await _settleUntil(
+        tester,
+        () => find
+            .byKey(const Key('day-slot-working-sets'))
+            .evaluate()
+            .isNotEmpty,
+      );
+      // The card finishes opening (and any other finishes folding away).
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+    }
+
+    final working = find.byKey(const Key('day-slot-working-sets'));
 
     await openEditor();
     final label = w.runtime.catalog!.index('en').variantLabel(timed.id);
     final machine = w.catalog.selectionFor(w.original)!.displayLabel;
     expect(find.text(label), findsWidgets);
     expect(find.text(machine), findsWidgets);
-    await tester.ensureVisible(working(0));
+    expect(find.byKey(const Key('metric-duration')), findsNothing);
+    await expand(0);
+    await tester.ensureVisible(working);
     await tester.tap(
       find.descendant(
-        of: working(0),
+        of: working,
         matching: find.byKey(const Key('stepper-inc')),
       ),
     );
@@ -422,8 +591,8 @@ void main() {
     await openEditor();
     expect(find.text(label), findsWidgets);
     expect(find.text(machine), findsWidgets);
-    expect(tester.widget<WStepper>(working(0)).value, 2);
-    expect(tester.widget<WStepper>(working(1)).value, 2);
+    await expand(0);
+    expect(tester.widget<WStepper>(working).value, 2);
     expect(
       tester
           .widget<TextField>(find.byKey(const Key('metric-duration')))
@@ -431,6 +600,9 @@ void main() {
           .text,
       '25.000000000000000001',
     );
+    await expand(1);
+    expect(working, findsOneWidget);
+    expect(tester.widget<WStepper>(working).value, 2);
     await tester.runAsync(() async {
       final day = (await DayTemplateRepository.local(w.database).byId(dayId))!;
       expect(day.slots, hasLength(2));
@@ -442,6 +614,38 @@ void main() {
       );
       expect(day.slots.last.catalog!.contextLabel, 'Hotel pulley');
     });
+
+    // The editor hands the card the unit of the app's one UnitService, so
+    // the header chip and the Load row agree in lb.
+    final units = Provider.of<UnitService>(
+      tester.element(find.byType(DayEditor)),
+      listen: false,
+    );
+    await tester.runAsync(() => units.setUnit(Unit.lb));
+    await tester.pump();
+    String textIn(Finder of) => tester
+        .widget<Text>(
+          find.descendant(of: of, matching: find.textContaining('lb')),
+        )
+        .data!;
+    final chips = find.byType(SlotSummaryChips).at(1);
+    final load = find.byKey(const Key('day-slot-load'));
+    await tester.ensureVisible(
+      find.text(lookupAppLocalizations(const Locale('en')).dayEditorLoadFixed),
+    );
+    await tester.tap(
+      find.text(lookupAppLocalizations(const Locale('en')).dayEditorLoadFixed),
+    );
+    await tester.pump();
+    expect(textIn(load), endsWith('lb'));
+    expect(textIn(chips), textIn(load));
+    final before = tester.widget<WStepper>(load).value;
+    await tester.tap(
+      find.descendant(of: load, matching: find.byKey(const Key('stepper-inc'))),
+    );
+    await tester.pump();
+    expect(tester.widget<WStepper>(load).value, before + 5);
+    expect(textIn(chips), textIn(load));
     expect(tester.takeException(), isNull);
   });
 }

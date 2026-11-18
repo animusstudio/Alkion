@@ -98,9 +98,23 @@ class BodyFigure extends StatefulWidget {
     required this.workload,
     this.visible = true,
     this.width = largeWidth,
+    this.background,
+    this.introKey,
   });
   final WorkoutWorkload workload;
   final bool visible;
+
+  /// The artwork turns once, slowly, when it first appears, then holds still.
+  /// Figures sharing this key in one route share that one turn: a host that
+  /// unmounts its figure while hidden (a pager slide, a tab switch) passes a
+  /// stable key, so showing it again does not turn again. Null limits the
+  /// turn to this figure, which still covers its remount after the sheet.
+  final Object? introKey;
+
+  /// The colour of the surface the figure sits on, sent to the native view
+  /// and its loading cover so the artwork box blends in. Null keeps the
+  /// card colour, `tokens.surface`.
+  final Color? background;
 
   /// Figure width; the artwork height follows [artHeightFor].
   final double width;
@@ -125,7 +139,33 @@ class BodyFigure extends StatefulWidget {
 
 class _BodyFigureState extends State<BodyFigure> {
   bool _expanded = false;
+  bool _introClaimed = false;
   late final ValueNotifier<WorkoutWorkload> _current;
+
+  /// True once per figure, and once per [BodyFigure.introKey] per route until
+  /// an intro has started. Only the artwork's first mount reads it, so later
+  /// builds may claim false. The mark is written by [_recordIntro], not here: a
+  /// figure disposed before it ever turns leaves the next mount its intro.
+  bool _claimIntro() {
+    if (_introClaimed) return false;
+    _introClaimed = true;
+    final key = widget.introKey;
+    final storage = key == null ? null : PageStorage.maybeOf(context);
+    if (storage == null) return true;
+    return storage.readState(context, identifier: (_introId, key)) != true;
+  }
+
+  static const _introId = 'alkion-body-intro';
+
+  /// The renderer reported the intro turning: later mounts under the same
+  /// [BodyFigure.introKey] start still.
+  void _recordIntro() {
+    final key = widget.introKey;
+    if (!mounted || key == null) return;
+    PageStorage.maybeOf(
+      context,
+    )?.writeState(context, true, identifier: (_introId, key));
+  }
 
   @override
   void initState() {
@@ -183,8 +223,11 @@ class _BodyFigureState extends State<BodyFigure> {
                       child: _BodyArtwork(
                         workload: widget.workload,
                         visible: widget.visible,
+                        intro: _claimIntro(),
+                        onIntroStarted: _recordIntro,
                         compact: true,
                         size: Size(width, artHeight),
+                        background: widget.background ?? context.tokens.surface,
                       ),
                     ),
                   ),
@@ -237,7 +280,16 @@ _WorkloadView _defaultView(WorkoutWorkload w) {
   return _views.first;
 }
 
-String _regionLabel(BuildContext context, WorkloadMuscle muscle) {
+/// The region counts the figure, its sheet and [BodyWorkloadCounts] show:
+/// the first view with loaded evidence (strength, then stretch, mobility,
+/// conditioning, then legacy groups). Counts overlap across regions, so they
+/// are never summed.
+Map<WorkloadMuscle, MuscleWorkload> workloadDisplayCounts(
+  WorkoutWorkload workload,
+) => _defaultView(workload).counts(workload);
+
+/// The localized name of one surface region, as the sheet lists it.
+String workloadRegionLabel(BuildContext context, WorkloadMuscle muscle) {
   final l = AppLocalizations.of(context);
   return switch (muscle) {
     WorkloadMuscle.glutes => l.bodyGlutes,
@@ -300,8 +352,12 @@ class _WorkloadSheet extends StatelessWidget {
               _BodyArtwork(
                 workload: workload,
                 visible: true,
+                // Each opened sheet is a new view and turns once.
+                intro: true,
                 compact: false,
                 size: Size(double.infinity, math.max(420, height * .5)),
+                // The sheet itself is a surface.
+                background: t.surface,
               ),
               const SizedBox(height: 16),
               const _WorkloadLegend(key: Key('body-legend')),
@@ -404,7 +460,7 @@ class BodyWorkloadCounts extends StatelessWidget {
         style: WorkoutType.body(size: 14, color: t.dim),
       );
     }
-    final counts = _defaultView(workload).counts(workload);
+    final counts = workloadDisplayCounts(workload);
     Widget cell(WorkloadMuscle muscle) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -412,7 +468,7 @@ class BodyWorkloadCounts extends StatelessWidget {
         children: [
           Expanded(
             child: FitLabel(
-              _regionLabel(context, muscle),
+              workloadRegionLabel(context, muscle),
               maxLines: 2,
               style: WorkoutType.body(size: 14, color: t.text),
             ),
@@ -476,11 +532,21 @@ class _BodyArtwork extends StatefulWidget {
     required this.visible,
     required this.compact,
     required this.size,
+    required this.background,
+    required this.intro,
+    this.onIntroStarted,
   });
   final WorkoutWorkload workload;
   final bool visible;
   final bool compact;
+
+  /// Whether this mount asks for the one intro turn; otherwise it starts still.
+  final bool intro;
+
+  /// Forwarded to [CharacterBody.onIntroStarted].
+  final VoidCallback? onIntroStarted;
   final Size size;
+  final Color background;
 
   @override
   State<_BodyArtwork> createState() => _BodyArtworkState();
@@ -499,7 +565,8 @@ class _BodyArtworkState extends State<_BodyArtwork> {
   @override
   void initState() {
     super.initState();
-    _controller = CharacterBodyController()..resume();
+    _controller = CharacterBodyController();
+    if (widget.intro) _controller.resume();
   }
 
   @override
@@ -612,18 +679,17 @@ class _BodyArtworkState extends State<_BodyArtwork> {
             ? CharacterBodyStyle.female
             : CharacterBodyStyle.male,
         scores: {
-          for (final entry in _defaultView(
-            widget.workload,
-          ).counts(widget.workload).entries)
+          for (final entry in workloadDisplayCounts(widget.workload).entries)
             entry.key: entry.value.score,
         },
         neutral: t.text,
         accent: t.accentText,
-        background: t.surface,
+        background: widget.background,
         brightness: Theme.of(context).brightness,
         visible: visible,
         reducedMotion: reduced,
         compact: widget.compact,
+        onIntroStarted: widget.onIntroStarted,
         controller: _controller,
         fallback: fallback,
         onStatus: (status) {
@@ -633,7 +699,7 @@ class _BodyArtworkState extends State<_BodyArtwork> {
     );
     // A horizontal-only recognizer wins the enclosing split pager when the
     // gesture starts on artwork, while leaving vertical scrolling to the list.
-    // Both sizes use the same native controller; rotateBy also pauses autoplay.
+    // Both sizes use the same native controller; rotateBy also ends the intro turn.
     final interactiveArt = GestureDetector(
       behavior: HitTestBehavior.opaque,
       onHorizontalDragStart: (_) => _controller.pause(),

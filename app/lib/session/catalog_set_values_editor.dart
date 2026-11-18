@@ -176,6 +176,9 @@ class _CatalogSetValuesEditorState extends State<CatalogSetValuesEditor> {
 
     final inputUnit = valid && !representable ? quantity!.unit : quantityUnit;
     final label = catalogMetricLabel(l, metric, unit: inputUnit);
+    // The caption shows the unit in its own slot, so its name drops the
+    // label's trailing "(kg)" or "(seconds)". The modal title keeps it.
+    final name = label.replaceFirst(RegExp(r'\s*\([^()]*\)\s*$'), '');
     final seed = !valid
         ? ''
         : !load || quantity!.unit == inputUnit
@@ -213,9 +216,8 @@ class _CatalogSetValuesEditorState extends State<CatalogSetValuesEditor> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: SetFieldGuide(
-              label: '$label${optional ? ' · ${l.catalogOptional}' : ''}',
-              color: context.tokens.accentText,
-              guide: context.tokens.lineStrong,
+              label: '$name${optional ? ' · ${l.catalogOptional}' : ''}',
+              unit: inputUnit == 'count' ? l.sessionRepsUnit : inputUnit,
             ),
           ),
           if (valid && !representable)

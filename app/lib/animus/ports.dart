@@ -23,8 +23,16 @@ abstract interface class AnimusAuthPort {
   /// A coordinated single exchange; caller bounds API 401 handling to one retry.
   Future<AnimusAuthSession?> refresh();
 
-  /// Local cancellation/secret removal; remote revocation is not implied.
+  /// Local-only cancellation/secret removal. Never performs network I/O, so it
+  /// fits inside Connect's own bounded pre-clear.
   Future<void> disconnect();
+
+  /// User Disconnect: best-effort, bounded provider revocation (refresh token
+  /// first, then access token) alongside the same local removal as
+  /// [disconnect]. The local removal never waits on, or depends on, the
+  /// provider. Returns whether the provider confirmed the sign-out; throws only
+  /// when the local removal itself fails.
+  Future<bool> signOut();
   Future<void> cancel();
   Future<void> close();
 }

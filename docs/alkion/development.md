@@ -1,14 +1,17 @@
-2026-11-11 · [New exercise artwork and female edition selection](../plans/2026-11-11-new-exercise-artwork-and-female-selection.md) · Done.
-
-2026-11-11 · [Latest artwork review filter](../plans/2026-11-11-artwork-library-latest-filter.md) · Done.
-
 # Alkion development and qualified driver handoff
 
+2026-11-13 · [Body intro follow-ups](../plans/2026-11-13-body-intro-follow-ups.md) · Done.
+2026-11-11 · [New exercise artwork and female edition selection](../plans/2026-11-11-new-exercise-artwork-and-female-selection.md) · Done.
+2026-11-11 · [Latest artwork review filter](../plans/2026-11-11-artwork-library-latest-filter.md) · Done.
 2026-11-11 · [Owner-marked artwork regeneration](../plans/2026-11-11-owner-marked-male-artwork-regeneration.md) · Complete (local qualification).
-
 2026-11-11 · [Updated artwork and stable numbered library](../plans/2026-11-11-numbered-artwork-library.md) · Done; see acceptance limits.
-
 2026-11-11 · [Bilingual catalog discovery](../plans/2026-11-11-catalog-discovery.md) · Done.
+2026-11-09 · [UI declutter round 2](../plans/2026-11-09-ui-declutter-round-2.md) · Done.
+2026-11-09 · [Toast redesign](../plans/2026-11-09-toast-redesign.md) · Done.
+2026-11-09 · [Live workout declutter](../plans/2026-11-09-live-workout-declutter.md) · Done.
+2026-11-09 · [Training day view](../plans/2026-11-09-training-day-view.md) · Done.
+2026-11-09 · [Day editor rebuild](../plans/2026-11-09-day-editor-rebuild.md) · Done.
+2026-11-09 · [Split volume overview](../plans/2026-11-09-split-volume-overview.md) · Done.
 
 2026-11-08 · [Legacy removal](../plans/2026-11-08-legacy-removal.md) · Done.
 

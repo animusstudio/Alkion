@@ -67,7 +67,8 @@ Color accentTextOn(Color accent, List<Color> surfaces, {double target = 4.5}) {
   return hsl.toColor();
 }
 
-/// Neutral black/white surfaces with independent action, workout, focus and status roles.
+/// Neutral black/white surfaces with independent action, workout and status
+/// roles; [focus] and [info] follow [accentText].
 /// [accent] preserves the user's workout-color choice; [action] is neutral.
 class WorkoutTokens extends ThemeExtension<WorkoutTokens> {
   const WorkoutTokens({
@@ -118,6 +119,8 @@ class WorkoutTokens extends ThemeExtension<WorkoutTokens> {
   final Color success;
   final Color overlay;
 
+  // `focus` and `info` are the accent text, so the app has one colour family:
+  // focus rings, the caret, selection and the toast's info glyph all take it.
   factory WorkoutTokens.dark(Color accent) => WorkoutTokens(
     bg: const Color(0xFF000000),
     surface: const Color(0xFF030305),
@@ -135,44 +138,48 @@ class WorkoutTokens extends ThemeExtension<WorkoutTokens> {
     accentInk: const Color(0xFF000000),
     action: const Color(0xFFF0F0F5),
     onAction: const Color(0xFF000000),
-    focus: const Color(0xFF419BFF),
-    info: const Color(0xFF7CC4FF),
+    // The dark theme's accent text is the accent itself.
+    focus: accent,
+    info: accent,
     caution: const Color(0xFFF2C14E),
     danger: const Color(0xFFFF6B7A),
     success: const Color(0xFF5EE0A0),
     overlay: const Color(0x9E000000),
   );
 
-  factory WorkoutTokens.light(Color accent) => WorkoutTokens(
-    bg: const Color(0xFFF5F6F8),
-    surface: const Color(0xFFFFFFFF),
-    surface2: const Color(0xFFECEEF2),
-    surface3: const Color(0xFFECEEF2),
-    sunken: const Color(0xFFECEEF2),
-    line: const Color(0xFFDEE1E7),
-    lineStrong: const Color(0xFF7C828D),
-    grid: const Color(0xFFE1E4E9),
-    text: const Color(0xFF111217),
-    dim: const Color(0xFF535863),
-    faint: const Color(0xFF535863),
-    accent: accent,
-    accentText: accent == defaultWorkoutAccent
+  factory WorkoutTokens.light(Color accent) {
+    final accentText = accent == defaultWorkoutAccent
         ? const Color(0xFFA82D00)
         : accentTextOn(accent, const [
             Color(0xFFF5F6F8),
             Color(0xFFFFFFFF),
             Color(0xFFECEEF2),
-          ]),
-    accentInk: const Color(0xFF000000),
-    action: const Color(0xFF111217),
-    onAction: const Color(0xFFFFFFFF),
-    focus: const Color(0xFF0053BC),
-    info: const Color(0xFF1D64A6),
-    caution: const Color(0xFF8A5A00),
-    danger: const Color(0xFFC0243B),
-    success: const Color(0xFF18683F),
-    overlay: const Color(0x73111217),
-  );
+          ]);
+    return WorkoutTokens(
+      bg: const Color(0xFFF5F6F8),
+      surface: const Color(0xFFFFFFFF),
+      surface2: const Color(0xFFECEEF2),
+      surface3: const Color(0xFFECEEF2),
+      sunken: const Color(0xFFECEEF2),
+      line: const Color(0xFFDEE1E7),
+      lineStrong: const Color(0xFF7C828D),
+      grid: const Color(0xFFE1E4E9),
+      text: const Color(0xFF111217),
+      dim: const Color(0xFF535863),
+      faint: const Color(0xFF535863),
+      accent: accent,
+      accentText: accentText,
+      accentInk: const Color(0xFF000000),
+      action: const Color(0xFF111217),
+      onAction: const Color(0xFFFFFFFF),
+      focus: accentText,
+      info: accentText,
+      caution: const Color(0xFF8A5A00),
+      danger: const Color(0xFFC0243B),
+      success: const Color(0xFF18683F),
+      overlay: const Color(0x73111217),
+    );
+  }
 
   @override
   WorkoutTokens copyWith({

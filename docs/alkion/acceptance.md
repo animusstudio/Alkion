@@ -6,6 +6,22 @@ observed: 2026-11-11
 
 # Alkion integrated acceptance
 
+## Catalog integration refresh — 2026-11-12
+
+Integrated published UI updates from `4623c238` at `967aede9`. Focused overlap
+checks pass 314 tests, analysis reports zero issues, and nine actual-bundle tests
+pass: 242 naming/control and 512 discovery probes, with preserved definitions,
+saved bindings and completed history. Generated translations were refreshed
+through the normal build target after the merge; no product fix was needed.
+Earlier full-suite results remain dated below; fresh exact-head CI is required
+before merging this integrated branch. Private APK/device boundaries are unchanged.
+
+The first refreshed CI run passed 3,820 tests and failed one notification-test
+readiness assumption. That test now waits for actual first-render entry, keeps
+the serialization assertions and always releases its gate. The 134 focused
+notification tests pass, with zero analysis issues. No application code changed;
+the next exact-head CI run supplies full-suite qualification.
+
 ## New exercises and selectable artwork editions — 2026-11-11
 
 The [approved plan](../plans/2026-11-11-new-exercise-artwork-and-female-selection.md)

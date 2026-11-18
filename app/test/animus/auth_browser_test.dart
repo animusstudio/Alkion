@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:alkion/animus/adapters/auth_browser.dart';
 import 'package:alkion/animus/config.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oidc_platform_interface/oidc_platform_interface.dart';
 
@@ -80,13 +81,14 @@ void main() {
       await launched.future;
       await browser.cancel();
       expect(await pending, isNull);
-      // The same fixed configured port is immediately reusable.
-      expect(
-        await browser.authorize(
+      // The same fixed configured port is immediately reusable; an unanswered
+      // flow then ends at its bound as a timeout, not a cancel.
+      await expectLater(
+        browser.authorize(
           authorizationUri: Uri.https('identity.example.test', '/authorize'),
           redirectUri: redirect,
         ),
-        isNull,
+        throwsA(isA<AnimusBrowserTimedOut>()),
       );
       expect(launches, 2);
       await browser.close();
@@ -130,7 +132,8 @@ void main() {
       );
       expect(callback?.path, '/oauth2redirect');
       expect(native.scheme, redirect.scheme);
-      expect(native.timeout, 120);
+      expect(native.timeout, 300);
+      expect(browser.flowTimeout, const Duration(seconds: 300));
       await browser.close();
       expect(native.cancels, 2);
     },
@@ -154,6 +157,134 @@ void main() {
       await browser.close();
     },
   );
+
+  test(
+    'Linux callback after the bound is refused and never returned',
+    () async {
+      final redirect = await _redirect();
+      final http = HttpClient()..findProxy = (_) => 'DIRECT';
+      final browser = SystemAnimusBrowser(
+        platform: AnimusPlatform.linux,
+        flowTimeout: const Duration(milliseconds: 100),
+        launch: (_) async => true,
+      );
+      await expectLater(
+        browser.authorize(
+          authorizationUri: Uri.https('identity.example.test', '/authorize'),
+          redirectUri: redirect,
+        ),
+        throwsA(isA<AnimusBrowserTimedOut>()),
+      );
+      // The listener is gone: a late provider redirect reaches nothing.
+      await expectLater(
+        http
+            .getUrl(redirect.replace(queryParameters: {'code': 'late-code'}))
+            .then((request) => request.close()),
+        throwsA(isA<SocketException>()),
+      );
+      await browser.close();
+      http.close(force: true);
+    },
+  );
+
+  group('Android distinguishes its own timeout from a user cancel', () {
+    final redirect = Uri.parse('dev.animusstudio.alkion.dev:/oauth2redirect');
+    final authorizeUri = Uri.https('identity.example.test', '/authorize');
+
+    test('a user cancel inside the bound is a cancel', () async {
+      final native = _Android()..cancelled = true;
+      final browser = SystemAnimusBrowser(
+        platform: AnimusPlatform.android,
+        android: native,
+        flowTimeout: const Duration(seconds: 5),
+      );
+      expect(
+        await browser.authorize(
+          authorizationUri: authorizeUri,
+          redirectUri: redirect,
+        ),
+        isNull,
+      );
+      await browser.close();
+    });
+
+    test('the bound cancels the native flow and reports a timeout', () async {
+      final native = _Android()..waitForCancel = Completer<void>();
+      final browser = SystemAnimusBrowser(
+        platform: AnimusPlatform.android,
+        android: native,
+        flowTimeout: const Duration(milliseconds: 100),
+      );
+      await expectLater(
+        browser.authorize(
+          authorizationUri: authorizeUri,
+          redirectUri: redirect,
+        ),
+        throwsA(isA<AnimusBrowserTimedOut>()),
+      );
+      expect(native.cancels, greaterThanOrEqualTo(2));
+      await browser.close();
+    });
+
+    test(
+      'a plugin-first timeout (USER_CANCELLED) is still a timeout',
+      () async {
+        final native = _Android()
+          ..cancelled = true
+          ..delay = const Duration(milliseconds: 150)
+          ..ignoreCancel = true;
+        final browser = SystemAnimusBrowser(
+          platform: AnimusPlatform.android,
+          android: native,
+          flowTimeout: const Duration(milliseconds: 100),
+        );
+        await expectLater(
+          browser.authorize(
+            authorizationUri: authorizeUri,
+            redirectUri: redirect,
+          ),
+          throwsA(isA<AnimusBrowserTimedOut>()),
+        );
+        await browser.close();
+      },
+    );
+
+    test('a callback delivered after the bound is discarded', () async {
+      final native = _Android()
+        ..delay = const Duration(milliseconds: 150)
+        ..ignoreCancel = true;
+      final browser = SystemAnimusBrowser(
+        platform: AnimusPlatform.android,
+        android: native,
+        flowTimeout: const Duration(milliseconds: 100),
+      );
+      await expectLater(
+        browser.authorize(
+          authorizationUri: authorizeUri,
+          redirectUri: redirect,
+        ),
+        throwsA(isA<AnimusBrowserTimedOut>()),
+      );
+      await browser.close();
+    });
+
+    test('an in-app cancel during the flow stays a cancel', () async {
+      final native = _Android()..waitForCancel = Completer<void>();
+      final browser = SystemAnimusBrowser(
+        platform: AnimusPlatform.android,
+        android: native,
+        flowTimeout: const Duration(seconds: 5),
+      );
+      final pending = browser.authorize(
+        authorizationUri: authorizeUri,
+        redirectUri: redirect,
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await browser.cancel();
+      expect(await pending, isNull);
+      await browser.close();
+    });
+  });
 }
 
 Future<Uri> _redirect() async {
@@ -169,6 +300,11 @@ class _Android extends OidcAndroidHostApi {
   String? scheme;
   Object? timeout;
   int cancels = 0;
+  bool cancelled = false;
+  bool ignoreCancel = false;
+  Duration? delay;
+  Completer<void>? waitForCancel;
+  bool active = false;
   @override
   Future<String?> authorize(
     String url,
@@ -178,11 +314,25 @@ class _Android extends OidcAndroidHostApi {
   ) async {
     scheme = callbackUrlScheme;
     timeout = options['flowTimeoutSeconds'];
+    active = true;
+    if (delay != null) await Future<void>.delayed(delay!);
+    if (waitForCancel != null) {
+      await waitForCancel!.future;
+      cancelled = true;
+    }
+    active = false;
+    if (cancelled) {
+      throw PlatformException(code: OidcNativeErrorCodes.userCancelled);
+    }
     return callback;
   }
 
   @override
   Future<void> cancel() async {
     cancels++;
+    final pending = waitForCancel;
+    if (active && !ignoreCancel && pending != null && !pending.isCompleted) {
+      pending.complete();
+    }
   }
 }

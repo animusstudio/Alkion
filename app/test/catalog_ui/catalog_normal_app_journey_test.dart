@@ -295,6 +295,18 @@ void main() {
           );
           await tester.pump();
           await settleReal(tester, ticks: 10);
+          // A loaded day starts collapsed: open the slot's card first.
+          expect(find.byKey(const Key('metric-duration')), findsNothing);
+          await tap(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget.key is ValueKey<String> &&
+                  (widget.key! as ValueKey<String>).value.startsWith(
+                    'day-slot-expand-',
+                  ),
+            ),
+          );
+          await tester.pump(const Duration(seconds: 1));
           final working = find.byWidgetPredicate(
             (widget) =>
                 widget is WStepper && widget.semanticLabel == 'Working sets',

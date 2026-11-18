@@ -176,6 +176,12 @@ final class Auth implements AnimusAuthPort {
   @override
   Future<void> cancel() async {}
   @override
+  Future<bool> signOut() async {
+    await disconnect();
+    return true;
+  }
+
+  @override
   Future<void> disconnect() async {}
   @override
   Future<void> close() async {}

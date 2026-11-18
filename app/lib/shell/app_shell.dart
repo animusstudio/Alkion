@@ -153,6 +153,7 @@ class _AppShellState extends State<AppShell> {
                       HistoryScreen(onOpenProfile: _openProfile),
                       PlanScreen(
                         key: _planKey,
+                        onStartDay: _start,
                         onEditorChanged: (open) {
                           if (_planEditorOpen != open) {
                             setState(() => _planEditorOpen = open);

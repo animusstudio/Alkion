@@ -15,6 +15,8 @@ import 'package:alkion/store/local_store.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/ui/day_editor.dart';
+import 'package:alkion/ui/day_slot_card.dart';
+import 'package:alkion/units/unit_service.dart';
 import 'package:alkion/ui/editor_guard.dart';
 import 'package:alkion/ui/exercise_editor.dart';
 import 'package:alkion/ui/export_failure.dart';
@@ -31,6 +33,16 @@ import '../support/icon_finders.dart';
 Future<void> tap(WidgetTester tester, Finder host, String text) async {
   await scrollIntoView(tester, host, find.text(text));
   await tester.tap(find.text(text));
+  await settleReal(tester, ticks: 4);
+}
+
+/// Sets the open card's RIR to off: a chip selects it, a second tap clears.
+Future<void> rirOff(WidgetTester tester) async {
+  final chip = find.byKey(const Key('rir-1'));
+  await scrollIntoView(tester, find.byType(DayEditor), chip);
+  await tester.tap(chip);
+  await settleReal(tester, ticks: 4);
+  await tester.tap(chip);
   await settleReal(tester, ticks: 4);
 }
 
@@ -116,8 +128,84 @@ void main() {
         ),
         '3×8–12 · RIR 0–1',
       );
+      expect(
+        formatPrescription(workSets: 2, reps: null, unavailable: 'n/a'),
+        '2×n/a',
+      );
     },
   );
+  test('prescription parts compose the unchanged one-line text', () {
+    expect(formatRepPair((low: 8, high: 8)), '8');
+    expect(formatRepPair((low: 8, high: 12)), '8–12');
+    expect(formatRepPair(null), '…');
+    expect(formatRepPair(null, unavailable: 'n/a'), 'n/a');
+    expect(formatSetsReps(workSets: 3, reps: (low: 8, high: 12)), '3×8–12');
+    expect(formatSetsReps(workSets: 3, reps: null), '3×…');
+    expect(formatRirTarget(2, 2), 'RIR 2');
+    expect(formatRirTarget(0, 1), 'RIR 0–1');
+    for (final (reps, rir) in [
+      ((low: 8, high: 8), null),
+      ((low: 6, high: 10), (0, 2)),
+      (null, (1, 1)),
+    ]) {
+      expect(
+        formatPrescription(
+          workSets: 4,
+          reps: reps,
+          rirLow: rir?.$1,
+          rirHigh: rir?.$2,
+        ),
+        [
+          formatSetsReps(workSets: 4, reps: reps),
+          if (rir != null) formatRirTarget(rir.$1, rir.$2),
+        ].join(' · '),
+      );
+    }
+    // A half-specified RIR pair never prints.
+    expect(formatPrescription(workSets: 3, reps: null, rirLow: 1), '3×…');
+  });
+  test('authored rep pairs omit the fallback that resolveRepPair adds', () {
+    const blank = Slot(exerciseId: 'e', position: 1);
+    expect(authoredRepPair(blank, ex), isNull);
+    expect(resolveRepPair(blank, ex), (low: 8, high: 8));
+    expect(
+      authoredRepPair(
+        const Slot(exerciseId: 'e', position: 1, repLow: 6, repHigh: 9),
+        ex,
+      ),
+      (reps: (low: 6, high: 9)),
+    );
+    expect(
+      authoredRepPair(
+        const Slot(exerciseId: 'e', position: 1, repLow: 9, repHigh: 6),
+        ex,
+      ),
+      (reps: null),
+    );
+    const defaults = Exercise(
+      id: 'e',
+      name: 'Bench',
+      slug: 'bench',
+      muscleGroup: 'chest',
+      compound: false,
+      plateStepKg: 2.5,
+      isTemplate: false,
+      defaultRepLow: 5,
+      defaultRepHigh: 5,
+    );
+    expect(authoredRepPair(blank, defaults), (reps: (low: 5, high: 5)));
+    expect(
+      authoredRepPair(
+        const Slot(
+          exerciseId: 'e',
+          position: 1,
+          rawFields: {'target_rep_low': 'eight'},
+        ),
+        defaults,
+      ),
+      (reps: null),
+    );
+  });
   test(
     'compatibility refusal explains native backup in all supported languages',
     () {
@@ -248,7 +336,7 @@ void main() {
   );
 
   testWidgets(
-    'weekday reveal is clean; add change remove are explicit and null saves',
+    'weekday chips select, clear on a second tap and a cleared day saves null',
     (tester) async {
       final h = ScreenHarness();
       addTearDown(h.close);
@@ -263,23 +351,24 @@ void main() {
         ),
       );
       await settleReal(tester);
-      await tap(tester, find.byType(DayEditor), 'Add weekday');
+      Iterable<Semantics> selectedDays() => tester
+          .widgetList<Semantics>(
+            find.descendant(
+              of: find.byKey(const Key('day-editor-weekday')),
+              matching: find.byType(Semantics),
+            ),
+          )
+          .where((w) => w.properties.selected == true);
       expect(guard.isDirty(), isFalse);
-      expect(
-        tester
-            .widgetList<Semantics>(find.byType(Semantics))
-            .where((w) => w.properties.selected == true),
-        isEmpty,
-      );
-      await tester.binding.handlePopRoute();
-      await settleReal(tester);
-      expect(guard.isDirty(), isFalse);
-      await tap(tester, find.byType(DayEditor), 'Add weekday');
-      await tester.tap(find.text('Tue'));
-      await settleReal(tester);
+      expect(selectedDays(), isEmpty);
+      for (final day in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']) {
+        expect(find.text(day), findsOneWidget, reason: day);
+      }
+      await tap(tester, find.byType(DayEditor), 'Tue');
       expect(guard.isDirty(), isTrue);
-      expect(find.text('Change weekday'), findsOneWidget);
-      await tap(tester, find.byType(DayEditor), 'Remove weekday');
+      expect(selectedDays(), hasLength(1));
+      await tap(tester, find.byType(DayEditor), 'Tue');
+      expect(selectedDays(), isEmpty);
       expect(guard.isDirty(), isFalse);
       await tap(tester, find.byType(DayEditor), 'Save changes');
       expect(
@@ -320,10 +409,7 @@ void main() {
       await tap(tester, find.byType(DayEditor), 'Add exercise');
       await tester.tap(find.text('Plain'));
       await settleReal(tester);
-      final slot = tester
-          .widget<DaySlotRow>(find.byType(DaySlotRow))
-          .slot
-          .draft;
+      final slot = tester.widget<DaySlotCard>(find.byType(DaySlotCard)).draft;
       expect(
         (slot.repLow, slot.repHigh, slot.rirPolicy),
         (8, 8, RirPolicy.off),
@@ -361,15 +447,19 @@ void main() {
           );
         }
       });
-      String? edited;
+      String? opened;
       await tester.pumpWidget(
-        h.wrap(Scaffold(body: SplitTab(onOpenEditor: (id) => edited = id))),
+        h.wrap(
+          Scaffold(
+            body: SplitTab(onOpenDay: (id) => opened = id, onEditDay: (_) {}),
+          ),
+        ),
       );
       await settleReal(tester);
       expect(find.text('Inactive (2)'), findsOneWidget);
       expect(find.text('Enable'), findsNWidgets(2));
       await tester.tap(find.text('Pull'));
-      expect(edited, 'd2');
+      expect(opened, 'd2');
       await tester.tap(find.text('Enable').first);
       await settleReal(tester, ticks: 12);
       final days = (await tester.runAsync(
@@ -402,7 +492,9 @@ void main() {
       await tap(tester, find.byType(DayEditor), 'Bench Press');
       await tap(tester, find.byType(DayEditor), 'Fixed reps');
       expect(guard.isDirty(), isTrue);
-      await tap(tester, find.byType(DayEditor), 'Remove RIR target');
+      // The stored range selects no chip; a chip, then a second tap, is off.
+      expect(find.text('RIR 1–2'), findsWidgets);
+      await rirOff(tester);
       await tap(tester, find.byType(DayEditor), 'Save changes');
       final saved = (await tester.runAsync(
         () => DayTemplateRepository.local(h.database).byId('d2'),
@@ -427,11 +519,8 @@ void main() {
       expect(find.textContaining('3×6'), findsOneWidget);
       expect(find.textContaining('RIR 1'), findsNothing);
       await tap(tester, find.byType(DayEditor), 'Bench Press');
-      await tap(tester, find.byType(DayEditor), 'More options');
-      await tap(tester, find.byType(DayEditor), 'Use exercise default');
-      expect(find.textContaining('RIR 1–2'), findsOneWidget);
-      await tap(tester, find.byType(DayEditor), 'Remove RIR target');
-      await tap(tester, find.byType(DayEditor), 'Add RIR target');
+      // RIR off, no evidence and Training preferences hide RIR: no row.
+      expect(find.byKey(const Key('rir-1')), findsNothing);
       await h.unmount(tester);
     },
   );
@@ -449,7 +538,11 @@ void main() {
       final fault = FaultDatabase(h.database, beforeCommit: true);
       h.overrideDatabase = fault;
       await tester.pumpWidget(
-        h.wrap(Scaffold(body: SplitTab(onOpenEditor: (_) {}))),
+        h.wrap(
+          Scaffold(
+            body: SplitTab(onOpenDay: (_) {}, onEditDay: (_) {}),
+          ),
+        ),
       );
       await settleReal(tester);
       await tester.tap(findGlyph(AlkionGlyph.more).first);
@@ -676,13 +769,11 @@ void main() {
         await check('advanced-open');
         await mount(DayEditor(id: 'd2', onBack: () {}));
         await check('weekday-none');
-        await tap(tester, find.byType(DayEditor), 'Add weekday');
-        await tester.tap(find.text('Wed'));
-        await settleReal(tester);
+        await tap(tester, find.byType(DayEditor), 'Wed');
         await check('weekday-assigned');
         await tap(tester, find.byType(DayEditor), 'Bench Press');
         await tap(tester, find.byType(DayEditor), 'Fixed reps');
-        await tap(tester, find.byType(DayEditor), 'Remove RIR target');
+        await rirOff(tester);
         await scrollIntoView(tester, find.byType(DayEditor), find.text('REPS'));
         await check('fixed-rir-off');
         await mount(TrainingPreferencesSheet(settings: h.settings));
@@ -697,7 +788,7 @@ void main() {
             }
           }
         });
-        await mount(SplitTab(onOpenEditor: (_) {}));
+        await mount(SplitTab(onOpenDay: (_) {}, onEditDay: (_) {}));
         await check('inactive-retained');
       }
       await h.unmount(tester);
@@ -733,19 +824,17 @@ void main() {
                     key: key,
                     child: Scaffold(
                       body: SingleChildScrollView(
-                        child: Builder(
-                          builder: (context) => DaySlotRow(
-                            index: 0,
-                            reorderIndex: 0,
-                            total: 1,
-                            slot: slot,
-                            exercise: ex,
-                            tokens: context.tokens,
-                            expanded: true,
-                            onToggle: () {},
-                            onRemove: () {},
-                            onChanged: () {},
-                          ),
+                        child: DaySlotCard(
+                          instanceKey: slot.instanceKey,
+                          draft: slot.draft,
+                          exercise: ex,
+                          reorderIndex: 0,
+                          unit: Unit.kg,
+                          rirControls: RirControls.show,
+                          expanded: true,
+                          onToggle: () {},
+                          onRemove: () {},
+                          onChanged: () {},
                         ),
                       ),
                     ),

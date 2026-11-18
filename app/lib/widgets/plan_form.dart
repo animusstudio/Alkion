@@ -65,7 +65,7 @@ class Field extends StatelessWidget {
 
 // ── TextInput ─────────────────────────────────────────────────────────────
 
-/// A single-line text input: at least 48dp, sunken background, focus-blue border,
+/// A single-line text input: at least 48dp, sunken background, focus (accent) border,
 /// 8dp corners and scalable interface text.
 class TextInput extends StatelessWidget {
   const TextInput({

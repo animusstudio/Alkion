@@ -110,6 +110,8 @@ class _SlideLayout extends StatelessWidget {
         final width = splitFigureWidth(context, box.maxWidth);
         final figure = bodyVisible
             ? BodyFigure(
+                // Every slide shares Today's one intro turn.
+                introKey: SplitCard,
                 width: width,
                 workload:
                     workload ??

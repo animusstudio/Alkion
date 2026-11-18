@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:alkion/animus/adapters/auth.dart';
+import 'package:alkion/animus/adapters/auth_browser.dart';
 import 'package:alkion/animus/connection.dart';
 import 'package:alkion/animus/config.dart';
 import 'package:alkion/animus/contracts.dart';
@@ -9,6 +10,8 @@ import 'package:alkion/animus/probe.dart';
 import 'package:alkion/animus/ports.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
+import 'package:oidc/oidc.dart' show OidcAuthorizeRequest;
+import 'package:oidc_platform_interface/oidc_platform_interface.dart';
 
 import 'auth_fixture.dart';
 import 'support.dart';
@@ -297,6 +300,284 @@ void main() {
     );
   }
 
+  test(
+    'every sign-in asks for a fresh login with prompt=login alone',
+    () async {
+      await auth.authorize();
+      await auth.authorize();
+      expect(fixture.browser.launches, 2);
+      final query = fixture.browser.lastAuthorization!.queryParametersAll;
+      expect(query['prompt'], ['login']);
+      expect(query.containsKey('max_age'), isFalse);
+      expect(query.containsKey('id_token_hint'), isFalse);
+    },
+  );
+
+  test(
+    'a browser timeout is timed out, exchanges nothing and keeps no session',
+    () async {
+      fixture.browser.failure = const AnimusBrowserTimedOut();
+      await expectLater(
+        auth.authorize(),
+        throwsA(
+          isA<AnimusAuthFailure>().having(
+            (failure) => failure.kind,
+            'kind',
+            AnimusAuthFailureKind.timedOut,
+          ),
+        ),
+      );
+      expect(fixture.exchanges, 0);
+      expect(fixture.secrets.values, isEmpty);
+      fixture.browser.failure = null;
+      expect(await auth.authorize(), isNotNull);
+    },
+  );
+
+  test('a provider callback after the 300 s bound leaves no session', () async {
+    final android = _LateAndroid();
+    final late = OidcAnimusAuth(
+      scope: fixture.scope,
+      secrets: fixture.secrets,
+      browser: SystemAnimusBrowser(
+        platform: AnimusPlatform.android,
+        android: android,
+        flowTimeout: const Duration(milliseconds: 100),
+      ),
+      httpClientFactory: fixture.client,
+    );
+    final controller = AnimusConnectionController(
+      config: fixture.scope.config,
+      auth: late,
+      probe: _SdkSessionProbe(),
+    );
+    try {
+      await controller.connect();
+      expect(android.delivered, isTrue);
+      expect(controller.state, AnimusConnectionState.timedOut);
+      expect(controller.identity, isNull);
+      expect(fixture.exchanges, 0);
+      expect(fixture.secrets.values, isEmpty);
+    } finally {
+      await controller.close();
+      controller.dispose();
+    }
+  });
+
+  group('Disconnect sign-out', () {
+    Future<void> retained() async {
+      final session = (await auth.authorize())!;
+      await auth.retain(session);
+      expect(fixture.secrets.values, hasLength(1));
+    }
+
+    test(
+      'revokes the refresh token, then the access token, then clears',
+      () async {
+        await retained();
+        final records = <LogRecord>[];
+        final logging = Logger.root.onRecord.listen(records.add);
+        Logger.root.level = Level.ALL;
+        expect(await auth.signOut(), isTrue);
+        await logging.cancel();
+        expect(records, isEmpty);
+        expect(fixture.revocations.map((r) => r['token_type_hint']), [
+          'refresh_token',
+          'access_token',
+        ]);
+        expect(fixture.revocations.first['token'], 'unit-refresh');
+        expect(fixture.revocations.last['token'], startsWith('unit-bearer-'));
+        expect(fixture.revocations.map((r) => r['client_id']).toSet(), {
+          fixture.scope.config.clientId,
+        });
+        expect(fixture.secrets.values, isEmpty);
+      },
+    );
+
+    test(
+      'revokes a saved connection that was never restored this run',
+      () async {
+        await retained();
+        await auth.close();
+        final requests = fixture.requests;
+        auth = OidcAnimusAuth(
+          scope: fixture.scope,
+          secrets: fixture.secrets,
+          browser: fixture.browser,
+          httpClientFactory: fixture.client,
+        );
+        expect(await auth.signOut(), isTrue);
+        // One discovery read plus the two revocations; no token exchange.
+        expect(fixture.requests - requests, 3);
+        expect(
+          fixture.revocations.map((r) => r['token']).first,
+          'unit-refresh',
+        );
+        expect(fixture.refreshes, 0);
+        expect(fixture.secrets.values, isEmpty);
+      },
+    );
+
+    test('nothing saved means nothing to revoke', () async {
+      expect(await auth.signOut(), isTrue);
+      expect(fixture.requests, 0);
+    });
+
+    for (final failure in ['refused', 'no endpoint']) {
+      test(
+        '$failure is reported unconfirmed and still clears locally',
+        () async {
+          await retained();
+          if (failure == 'refused') {
+            fixture.revocationStatus = 503;
+          } else {
+            await auth.close();
+            fixture.revocationEndpoint = null;
+            auth = OidcAnimusAuth(
+              scope: fixture.scope,
+              secrets: fixture.secrets,
+              browser: fixture.browser,
+              httpClientFactory: fixture.client,
+            );
+          }
+          expect(await auth.signOut(), isFalse);
+          expect(fixture.secrets.values, isEmpty);
+        },
+      );
+    }
+
+    test(
+      'a refused refresh revocation still revokes the access token',
+      () async {
+        await retained();
+        fixture.refusedRevocationHint = 'refresh_token';
+        expect(await auth.signOut(), isFalse);
+        expect(fixture.revocations.map((r) => r['token_type_hint']), [
+          'refresh_token',
+          'access_token',
+        ]);
+        expect(fixture.secrets.values, isEmpty);
+      },
+    );
+
+    test(
+      'a Connect started during the saved-token read is not cancelled',
+      () async {
+        await retained();
+        await auth.close();
+        auth = OidcAnimusAuth(
+          scope: fixture.scope,
+          secrets: fixture.secrets,
+          browser: fixture.browser,
+          httpClientFactory: fixture.client,
+        );
+        fixture.secrets.readGate = Completer<void>();
+        final signingOut = auth.signOut();
+        await _until(() => fixture.secrets.reads == 1);
+        fixture.browser.gate = Completer<Uri?>();
+        final launches = fixture.browser.launches;
+        final connecting = auth.authorize();
+        await _until(() => fixture.browser.launches == launches + 1);
+        fixture.secrets.readGate!.complete();
+        expect(await signingOut, isTrue);
+        expect(fixture.secrets.values, isEmpty);
+        final transaction = fixture.browser.lastTransaction!;
+        fixture.browser.gate!.complete(
+          fixture.scope.config.redirectUri.replace(
+            queryParameters: {
+              'code': 'unit-code',
+              'state': transaction.queryParameters['state']!,
+            },
+          ),
+        );
+        expect(await connecting, isNotNull);
+      },
+    );
+
+    test('local clear never waits on a slow provider', () async {
+      await retained();
+      fixture.revocationGate = Completer<void>();
+      final signingOut = auth.signOut();
+      await _until(() => fixture.revocations.isNotEmpty);
+      await _until(() => fixture.secrets.values.isEmpty);
+      fixture.revocationGate!.complete();
+      expect(await signingOut, isTrue);
+    });
+
+    test("Connect's local pre-clear never contacts the provider", () async {
+      final controller = AnimusConnectionController(
+        config: fixture.scope.config,
+        auth: auth,
+        probe: _SdkSessionProbe(),
+      );
+      try {
+        await controller.connect();
+        await controller.confirm();
+        await controller.connect();
+        expect(controller.state, AnimusConnectionState.awaitingConfirmation);
+        await auth.disconnect();
+        expect(fixture.revocations, isEmpty);
+        await controller.disconnect();
+        expect(controller.state, AnimusConnectionState.disconnected);
+        expect(controller.issue, isNull);
+      } finally {
+        await controller.close();
+        controller.dispose();
+      }
+    });
+  });
+
+  group('authorization request guard', () {
+    OidcAuthorizeRequest request({List<String>? prompt, Duration? maxAge}) =>
+        OidcAuthorizeRequest(
+          responseType: const ['code'],
+          clientId: fixture.scope.config.clientId,
+          redirectUri: fixture.scope.config.redirectUri,
+          scope: const ['openid'],
+          codeChallenge: 'unit-challenge',
+          codeChallengeMethod: 'S256',
+          state: 'unit-state',
+          nonce: 'unit-nonce',
+          prompt: prompt,
+          maxAge: maxAge,
+        );
+    bool accepted(OidcAuthorizeRequest r, AnimusAuthIntent intent) =>
+        animusAuthorizeRequestAccepted(r, fixture.scope.config, intent);
+
+    test('accepts a sign-in with prompt=login alone', () {
+      expect(
+        accepted(request(prompt: ['login']), AnimusAuthIntent.signIn),
+        isTrue,
+      );
+    });
+
+    for (final prompt in <List<String>?>[
+      null,
+      [],
+      ['none'],
+      ['consent'],
+      ['login', 'consent'],
+    ]) {
+      test('rejects a sign-in with prompt $prompt', () {
+        expect(
+          accepted(request(prompt: prompt), AnimusAuthIntent.signIn),
+          isFalse,
+        );
+      });
+    }
+
+    test('rejects max_age and keeps the enrollment request unchanged', () {
+      expect(
+        accepted(
+          request(prompt: ['login'], maxAge: const Duration(minutes: 5)),
+          AnimusAuthIntent.signIn,
+        ),
+        isFalse,
+      );
+      expect(accepted(request(), AnimusAuthIntent.createAccount), isTrue);
+    });
+  });
+
   test('cancel fences late browser callback and token exchange', () async {
     fixture.browser.gate = Completer<Uri?>();
     final operation = auth.authorize();
@@ -503,6 +784,29 @@ Future<void> _until(bool Function() done) async {
     await Future<void>.delayed(const Duration(milliseconds: 5));
   }
   throw StateError('Synthetic operation did not reach bounded checkpoint');
+}
+
+/// Delivers a valid callback after the flow bound and ignores the cancel, as a
+/// provider redirect racing the timeout would.
+class _LateAndroid extends OidcAndroidHostApi {
+  bool delivered = false;
+  @override
+  Future<String?> authorize(
+    String url,
+    String? redirectUri,
+    String? callbackUrlScheme,
+    Map<String, Object?> options,
+  ) async {
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    delivered = true;
+    final state = Uri.parse(url).queryParameters['state']!;
+    return Uri.parse(redirectUri!)
+        .replace(queryParameters: {'code': 'late-code', 'state': state})
+        .toString();
+  }
+
+  @override
+  Future<void> cancel() async {}
 }
 
 class _SdkSessionProbe implements AnimusProbePort {

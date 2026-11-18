@@ -849,6 +849,12 @@ class _EntryAuth implements AnimusAuthPort {
   @override
   Future<AnimusAuthSession?> refresh() async => null;
   @override
+  Future<bool> signOut() async {
+    await disconnect();
+    return true;
+  }
+
+  @override
   Future<void> disconnect() async {}
   @override
   Future<void> cancel() async {}

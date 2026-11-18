@@ -19,6 +19,10 @@ enum AnimusConnectionState {
   accessDenied,
   unavailable,
   cancelled,
+
+  /// The browser sign-in was not finished within its bound. Distinct from a
+  /// user cancel so the UI can say "timed out, try again".
+  timedOut,
 }
 
 enum AnimusConnectionIssue {
@@ -32,6 +36,13 @@ enum AnimusConnectionIssue {
   offline,
   timeout,
   invalidResponse,
+
+  /// This profile stays attached to another, verified or in-use account.
+  differentAccount,
+
+  /// Disconnect cleared this device, but the provider did not confirm the
+  /// revocation (unreachable, refused, or no revocation endpoint).
+  serverSignOutUnconfirmed,
 }
 
 /// Foreground connection state only. It owns no local data, outbox, binding or
@@ -136,6 +147,11 @@ final class AnimusConnectionController extends ChangeNotifier {
           if (error is AnimusAuthFailure &&
               error.kind == AnimusAuthFailureKind.cancelled) {
             _publish(AnimusConnectionState.cancelled);
+          } else if (error is AnimusAuthFailure &&
+              error.kind == AnimusAuthFailureKind.timedOut) {
+            _session = null;
+            _confirmed = false;
+            _publish(AnimusConnectionState.timedOut);
           } else {
             // Identity from a failed exchange is never usable by a later GET.
             _session = null;
@@ -158,6 +174,7 @@ final class AnimusConnectionController extends ChangeNotifier {
       _run(AnimusConnectionState.authenticating, (epoch) async {
         _session = null;
         _confirmed = false;
+        // Local-only pre-clear: Connect never revokes over the network.
         await _auth!.disconnect();
         if (!_current(epoch)) return;
         final session = await _auth.authorize(intent: intent);
@@ -243,6 +260,11 @@ final class AnimusConnectionController extends ChangeNotifier {
           AnimusConnectionState.unavailable,
           AnimusConnectionIssue.verificationUnavailable,
         );
+      case AnimusProbeResult.differentAccount:
+        _publish(
+          AnimusConnectionState.unavailable,
+          AnimusConnectionIssue.differentAccount,
+        );
       case AnimusProbeResult.serviceUnavailable:
         _publish(
           AnimusConnectionState.unavailable,
@@ -295,9 +317,11 @@ final class AnimusConnectionController extends ChangeNotifier {
     _session = null;
     _confirmed = false;
     _publish(AnimusConnectionState.cancelled);
-    await _localCleanup(disconnect: false);
+    await _localCleanup();
   }
 
+  /// User Disconnect. This device is cleared at once; the provider revocation
+  /// is best-effort and only reported when it could not be confirmed.
   Future<void> disconnect() async {
     if (!_enabled) return;
     _epoch++;
@@ -305,14 +329,39 @@ final class AnimusConnectionController extends ChangeNotifier {
     _session = null;
     _confirmed = false;
     _publish(AnimusConnectionState.disconnected);
-    await _localCleanup(disconnect: true);
+    final epoch = _epoch;
+    try {
+      // Above the adapter's own bounds: a 5 s secure read, then the 8 s
+      // revocation alongside the 5 s local removal.
+      final results = await Future.wait<Object?>([
+        _auth!.signOut(),
+        _probe!.cancel(),
+      ]).timeout(const Duration(seconds: 20));
+      // Connect does not advance the epoch, so also require the idle state.
+      if (results.first != true &&
+          _current(epoch) &&
+          _running == null &&
+          _state == AnimusConnectionState.disconnected) {
+        _publish(
+          AnimusConnectionState.disconnected,
+          AnimusConnectionIssue.serverSignOutUnconfirmed,
+        );
+      }
+    } on Object catch (error) {
+      // Same guard: a slow failure must not overwrite a newer Connect.
+      if (_current(epoch) &&
+          _running == null &&
+          _state == AnimusConnectionState.disconnected) {
+        _publish(AnimusConnectionState.unavailable, _authIssue(error));
+      }
+    }
   }
 
-  Future<void> _localCleanup({required bool disconnect}) async {
+  Future<void> _localCleanup() async {
     final epoch = _epoch;
     try {
       await Future.wait([
-        disconnect ? _auth!.disconnect() : _auth!.cancel(),
+        _auth!.cancel(),
         _probe!.cancel(),
       ]).timeout(const Duration(seconds: 6));
     } on Object catch (error) {

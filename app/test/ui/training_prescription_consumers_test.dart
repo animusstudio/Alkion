@@ -247,7 +247,8 @@ void main() {
         (8, 8, RirPolicy.off),
       );
       expect(first.targetRepRange, isNull);
-      expect(find.text('Rep range: —'), findsOneWidget);
+      // No authored range: the card shows no rep-range tag.
+      expect(find.byKey(const Key('live-rep-range')), findsNothing);
       final firstObservations = first.allSets.map((s) => s.toJson()).toList();
       await scrollIntoView(
         tester,
@@ -453,12 +454,8 @@ void main() {
           await tester.tap(prompt);
           await tester.pump();
           expect(first.rir, 0);
-          await scrollIntoView(
-            tester,
-            find.byType(ActiveSessionScreen),
-            find.text('Clear RIR'),
-          );
-          await tester.tap(find.text('Clear RIR'));
+          // Tapping the selected chip again clears it.
+          await tester.tap(prompt);
           await tester.pump();
           expect(first.rir, isNull);
           final beforeHide = b.allSets.map((s) => s.toJson()).toList();

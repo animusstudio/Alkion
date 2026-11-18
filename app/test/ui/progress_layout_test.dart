@@ -119,7 +119,7 @@ void main() {
   }
 
   testWidgets(
-    'progress selection uses neutral control colors and a blue focus state',
+    'progress selection uses neutral control colors and an accent focus state',
     (tester) async {
       final theme = buildTheme(Brightness.light, defaultWorkoutAccent);
       final tokens = theme.extension<WorkoutTokens>()!;

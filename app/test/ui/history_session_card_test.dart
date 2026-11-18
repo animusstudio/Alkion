@@ -15,7 +15,9 @@ import 'package:provider/provider.dart';
 import 'package:alkion/units/unit_service.dart';
 import 'package:alkion/theme/alkion_icon.dart';
 
+import '../support/app_fonts.dart';
 import '../support/l10n_harness.dart';
+import '../support/layout_expect.dart';
 import '../support/icon_finders.dart';
 
 /// Only `setsForSession` and `deleteSession` are real, and both complete at
@@ -685,6 +687,93 @@ void main() {
     expect(find.text('This exercise has no setup to log yet.'), findsOneWidget);
     expect(find.byType(SetEditorSheet), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  group('typed rows', () {
+    setUpAll(preloadAppFonts);
+
+    LoggedSet typedSet(String id, int number, Map<String, String> values) =>
+        LoggedSet(
+          id: id,
+          exerciseId: 'typed',
+          setNumber: number,
+          weightKg: 0,
+          reps: 0,
+          isWarmup: false,
+          isTopSet: false,
+          isPr: false,
+          catalog: CatalogSetEvidence(
+            selection: CatalogSelectionEvidence(
+              exerciseId: 'typed',
+              contextId: 'synthetic-context',
+              contextRevision: 1,
+              displayLabel: 'Typed sit-up',
+              profile: CatalogMeasurementProfileEvidence.forKey(
+                'reps_duration_optional_load',
+              ),
+            ),
+            metrics: {
+              for (final MapEntry(:key, :value) in values.entries)
+                key: CatalogMetricEvidence.fromInput(
+                  value,
+                  metric: key,
+                  unit: CatalogMetricEvidence.defaultUnit(key),
+                ),
+            },
+          ),
+        );
+
+    final sets = [
+      typedSet('t1', 1, {
+        'repetitions': '12',
+        'duration': '30',
+        'reported_load': '142.5',
+      }),
+      typedSet('t2', 2, {'repetitions': '15'}),
+    ];
+
+    testWidgets('read in the compact form, not the labelled summary', (
+      tester,
+    ) async {
+      await tester.pumpWidget(card(FakeSessionRepository(sets)));
+      await expand(tester);
+      expect(find.text('142.5 kg × 12 · 30 s'), findsOneWidget);
+      expect(find.text('15 reps'), findsOneWidget);
+      expect(find.textContaining('Load (kg)'), findsNothing);
+      expect(find.textContaining('Repetitions:'), findsNothing);
+    });
+
+    for (final code in ['en', 'de', 'it']) {
+      testWidgets('fit 320dp / 2.0x ($code)', (tester) async {
+        tester.view.physicalSize = const Size(320, 1600);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          MediaQuery(
+            data: const MediaQueryData(
+              size: Size(320, 1600),
+              textScaler: TextScaler.linear(2.0),
+            ),
+            child: wrapL10n(
+              SingleChildScrollView(
+                child: SessionCard(
+                  session: sessionRow(),
+                  catalogMap: catalog,
+                  sessionRepo: FakeSessionRepository(sets),
+                  units: UnitService(),
+                ),
+              ),
+              locale: Locale(code),
+            ),
+          ),
+        );
+        await expand(tester);
+        expect(tester.takeException(), isNull);
+        final text = find.text('142.5 kg × 12 · 30 s');
+        expect(tester.getRect(text).right, lessThanOrEqualTo(320));
+        expectNoSplitWords(tester);
+      });
+    }
   });
 }
 

@@ -7,7 +7,9 @@ import 'package:alkion/data/models.dart';
 import 'package:alkion/session/resume.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
+import 'package:alkion/settings/settings_service.dart' show RirControls;
 import 'package:alkion/ui/day_editor.dart';
+import 'package:alkion/ui/day_slot_card.dart';
 import 'package:alkion/ui/history_screen.dart';
 import 'package:alkion/ui/split_tab.dart';
 import 'package:alkion/units/unit_service.dart';
@@ -50,22 +52,26 @@ void main() {
         var expanded = 0;
         var removed = 0;
         final slot = DaySlotState(draft: SlotDraft(exerciseId: 'bench'));
-        final tokens = brightness == Brightness.dark
-            ? WorkoutTokens.dark(defaultWorkoutAccent)
-            : WorkoutTokens.light(defaultWorkoutAccent);
         await tester.pumpWidget(
           _wrap(
-            DaySlotRow(
-              index: 0,
-              reorderIndex: 0,
-              total: 1,
-              slot: slot,
-              exercise: catalog['bench']!,
-              tokens: tokens,
-              expanded: false,
-              onToggle: () => expanded++,
-              onRemove: () => removed++,
-              onChanged: () {},
+            ReorderableListView(
+              buildDefaultDragHandles: false,
+              onReorderItem: (_, _) {},
+              children: [
+                DaySlotCard(
+                  key: const ValueKey('card'),
+                  instanceKey: slot.instanceKey,
+                  draft: slot.draft,
+                  exercise: catalog['bench']!,
+                  reorderIndex: 0,
+                  unit: Unit.kg,
+                  rirControls: RirControls.off,
+                  expanded: false,
+                  onToggle: () => expanded++,
+                  onRemove: () => removed++,
+                  onChanged: () {},
+                ),
+              ],
             ),
             brightness,
             locale,
@@ -75,12 +81,9 @@ void main() {
           ValueKey('day-slot-expand-${slot.instanceKey}'),
         );
         expect(tester.getSize(expand).height, greaterThanOrEqualTo(48));
-        final remove = find
-            .descendant(
-              of: find.byType(DaySlotRow),
-              matching: find.byType(TextButton),
-            )
-            .last;
+        final remove = find.byKey(
+          ValueKey('day-slot-remove-${slot.instanceKey}'),
+        );
         final removeNode = tester.getSemantics(remove);
         expect(removeNode.flagsCollection.isButton, isTrue);
         expect(removeNode.label, contains('Bench'));

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/data/models.dart';
 import 'package:alkion/ui/day_editor.dart';
+import 'package:alkion/ui/slot_modes.dart' show rirOf;
 
 const _ex = Exercise(
   id: 'ex',
@@ -46,17 +47,23 @@ void main() {
   });
 
   test('an untouched inverted RIR range retains its exact bounds', () {
-    const resolved = ResolvedSlot(
-      exercise: _ex,
-      workSets: 3,
-      warmupSets: 0,
-      repLow: 8,
-      repHigh: 12,
-      rirLow: 3,
-      rirHigh: 1,
+    final s = DaySlotState(
+      draft: SlotDraft(
+        itemId: 'item',
+        exerciseId: _ex.id,
+        workSets: 3,
+        repLow: 8,
+        repHigh: 12,
+        rirLow: 3,
+        rirHigh: 1,
+        rirPolicy: RirPolicy.target,
+        changedFields: {},
+      ),
     );
-    final s = daySlotStateFromResolved(resolved, 'item');
+    // Reading the RIR row never writes the slot.
+    rirOf(s.draft, _ex);
     expect(s.draft.rirLow, 3);
     expect(s.draft.rirHigh, 1);
+    expect(s.draft.changedFields, isEmpty);
   });
 }

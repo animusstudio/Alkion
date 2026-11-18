@@ -45,8 +45,11 @@ void main() {
         manager.settings.userInfoSettings.followDistributedClaims,
         isFalse,
       );
-      expect(manager.settings.options!.android.flowTimeoutSeconds, 120);
-      expect(manager.settings.options!.linux.flowTimeoutSeconds, 120);
+      expect(manager.settings.options!.android.flowTimeoutSeconds, 300);
+      expect(manager.settings.options!.linux.flowTimeoutSeconds, 300);
+      expect(manager.settings.prompt, isEmpty);
+      expect(manager.settings.maxAge, isNull);
+      expect(manager.settings.revokeTokensOnLogout, isFalse);
       await manager.dispose();
       expect(requests, 0);
     },

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/ui/day_editor.dart';
+import 'package:alkion/ui/day_slot_card.dart';
 import 'package:alkion/ui/editor_guard.dart';
 import 'package:alkion/ui/exercise_editor.dart';
 import 'package:alkion/units/unit_service.dart';
@@ -116,6 +117,81 @@ void main() {
       _stepperButton(_l.dayEditorWorkingSets, 'stepper-dec'),
     );
     expect(guard.isDirty(), isFalse);
+    await harness.unmount(tester);
+  });
+
+  testWidgets('a loaded day starts collapsed and stays clean through '
+      'opening cards and a weekday picked then cleared', (tester) async {
+    await harness.open(tester);
+    setPhone(tester, width: 412);
+    final guard = EditorGuard();
+    await _mountDay(tester, harness, guard);
+    final cards = tester.widgetList<DaySlotCard>(find.byType(DaySlotCard));
+    expect(cards, hasLength(4));
+    expect(cards.where((c) => c.expanded), isEmpty);
+
+    await _tapVisible(tester, find.text('Bench Press'));
+    await settleReal(tester, ticks: 3);
+    expect(
+      tester
+          .widgetList<DaySlotCard>(find.byType(DaySlotCard))
+          .where((c) => c.expanded)
+          .map((c) => c.displayName ?? c.exercise.name),
+      ['Bench Press'],
+    );
+    expect(guard.isDirty(), isFalse);
+    await _tapVisible(tester, find.text('Brand New Movement'));
+    await settleReal(tester, ticks: 3);
+    // One card open at a time.
+    expect(
+      tester
+          .widgetList<DaySlotCard>(find.byType(DaySlotCard))
+          .where((c) => c.expanded)
+          .map((c) => c.displayName ?? c.exercise.name),
+      ['Brand New Movement'],
+    );
+    expect(guard.isDirty(), isFalse);
+
+    await _tapVisible(tester, find.text('Thu'));
+    expect(guard.isDirty(), isTrue);
+    await _tapVisible(tester, find.text('Thu'));
+    expect(guard.isDirty(), isFalse);
+    // The retired slot hint is gone.
+    expect(
+      find.text('Tap an exercise to change its sets and reps.'),
+      findsNothing,
+    );
+    await harness.unmount(tester);
+  });
+
+  testWidgets('an added exercise opens its card and closes the open one', (
+    tester,
+  ) async {
+    await harness.open(tester);
+    setPhone(tester, width: 412);
+    final guard = EditorGuard();
+    await _mountDay(tester, harness, guard, id: 'd2');
+    await _tapVisible(tester, find.text('Bench Press'));
+    await settleReal(tester, ticks: 3);
+    await _tapVisible(tester, find.text(_l.dayEditorAddExercise));
+    await settleReal(tester, ticks: 3);
+    await tester.tap(find.text('Brand New Movement').last);
+    await settleReal(tester);
+    final cards = tester
+        .widgetList<DaySlotCard>(find.byType(DaySlotCard))
+        .toList();
+    expect(cards.map((c) => c.exercise.name), [
+      'Bench Press',
+      'Brand New Movement',
+    ]);
+    expect(cards.map((c) => c.expanded), [false, true]);
+    // Explicit values from the exercise defaults (3 sets, 1 warm-up, 6).
+    final added = cards.last.draft;
+    expect(
+      (added.workSets, added.warmupSets, added.repLow, added.repHigh),
+      (3, 1, 6, 6),
+    );
+    expect(guard.isDirty(), isTrue);
     await harness.unmount(tester);
   });
 

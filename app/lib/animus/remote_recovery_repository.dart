@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../domain/evidence.dart';
 import '../recovery/backup.dart';
 import '../store/local_store.dart';
+import '../store/schema.dart' show attachmentReleaseTables;
 import 'strict_json.dart';
 import 'recovery_stage_models.dart';
 
@@ -26,6 +27,34 @@ bool _validGeneration(String value, {bool unknown = false}) =>
 Map<String, dynamic> _decode(Object? value) => Map<String, dynamic>.from(
   jsonDecode(utf8.decode((value as List).cast<int>())) as Map,
 );
+
+const remoteRecoveryErrorCodes = {
+  'recovery_required',
+  'operation_recovery_required',
+  'recovery_unavailable',
+};
+
+/// Retained bytes of one ordinary 401/403 refusal body.
+const refusalEvidenceLimit = 64 * 1024;
+
+/// Released wrong-account evidence stays bounded however often it recurs.
+const releasedAttachmentLimit = 16;
+const releasedExchangeLimit = 64;
+const releasedBodyLimit = 256 * 1024;
+const releasedOverflowId = 'overflow';
+
+/// Fail closed: a recovery error code that any lenient reading of [body] could
+/// see counts, whatever its media type. HTML or plain text carries none.
+bool hasRemoteRecoveryError(List<int> body) {
+  if (body.isEmpty) return false;
+  try {
+    return animusJsonErrorCandidates(
+      utf8.decode(body, allowMalformed: true),
+    ).any(remoteRecoveryErrorCodes.contains);
+  } on FormatException {
+    return true;
+  }
+}
 
 /// The existing nonsecret workout binding, with no arbitrary extra properties.
 /// This is deliberately not an auth/session/header serialization surface.
@@ -159,6 +188,12 @@ final class RemoteRecoveryState {
   bool get ready => state == 'ready';
 }
 
+/// Tables a recovery capture references instead of copying.
+const uncapturedRecoveryTables = {
+  'animus_recovery_archives',
+  ...attachmentReleaseTables,
+};
+
 final class RemoteRecoveryArchive {
   RemoteRecoveryArchive._(Map<String, dynamic> row)
     : id = row['archive_id'] as String,
@@ -250,17 +285,161 @@ final class RemoteRecoveryRepository {
         'SELECT * FROM animus_remote_attachments WHERE profile_id=?',
         [tx.profileId],
       );
-      if (existing.isEmpty) {
+      if (existing.length > 1) _deny('remote_attachment_mismatch');
+      if (existing.length == 1 &&
+          existing.single['attachment_id'] != binding.id) {
+        // Only verified access pins a profile: an unverified attachment of
+        // another account is archived and released in this same transaction.
+        if (!await _releasable(tx, existing.single)) {
+          _deny('remote_attachment_mismatch');
+        }
+        await _release(tx, existing.single);
+      }
+      if (existing.isEmpty || existing.single['attachment_id'] != binding.id) {
         await tx.execute(
           "INSERT INTO animus_remote_attachments VALUES(?,?,?,?,?,'ready',1,NULL,?)",
           [tx.profileId, binding.id, binding.bytes, binding.id, null, _now()],
         );
-      } else if (existing.length != 1 ||
-          existing.single['attachment_id'] != binding.id) {
-        _deny('remote_attachment_mismatch');
       }
     }, expected: db.token);
     return beginExchange(binding.id, const RemoteApiRequest.discovery());
+  }
+
+  /// Releasable means: still `ready` with every intent settled, never fenced,
+  /// archived, staged or adopted, no 2xx evidence on any non-discovery path
+  /// (verified read or acknowledged action), and no retained remote work.
+  Future<bool> _releasable(LocalRead tx, Map<String, dynamic> row) async {
+    final id = row['attachment_id'] as String;
+    if (_digest((row['binding_bytes'] as List).cast<int>()) !=
+            row['binding_hash'] ||
+        row['state'] != 'ready' ||
+        row['archive_id'] != null ||
+        !const ['ready', 'unbound'].contains((await _state(tx, id)).state)) {
+      return false;
+    }
+    final pinned = await tx.getOptional(
+      "SELECT 1 FROM animus_exchange_intents WHERE profile_id=?1 AND attachment_id=?2 AND state<>'settled' "
+      "UNION ALL SELECT 1 FROM animus_response_evidence e JOIN animus_exchange_intents i ON i.profile_id=e.profile_id AND i.exchange_id=e.exchange_id WHERE i.profile_id=?1 AND i.attachment_id=?2 AND i.path_kind<>'discovery' AND e.http_status BETWEEN 200 AND 299 "
+      'UNION ALL SELECT 1 FROM animus_recovery_archives WHERE profile_id=?1 AND attachment_id=?2 '
+      'UNION ALL SELECT 1 FROM animus_recovery_stages WHERE profile_id=?1 AND attachment_id=?2 '
+      "UNION ALL SELECT 1 FROM local_state WHERE profile_id=?1 AND state_kind='semanticSetting' AND state_key=?3 LIMIT 1",
+      [tx.profileId, id, _activeKey(id)],
+    );
+    return pinned == null && !await _retainedRemoteWork(tx);
+  }
+
+  /// Moves a releasable attachment's evidence into the capped, deduplicated
+  /// released archive, then removes its live rows under a transient lease.
+  /// Distinct exchanges keep their exact metadata and body digest; bodies are
+  /// kept up to [releasedBodyLimit]; anything beyond a cap is counted.
+  Future<void> _release(LocalTransaction tx, Map<String, dynamic> row) async {
+    final id = row['attachment_id'] as String;
+    final items = await tx.getAll(
+      'SELECT i.path_kind,i.method,i.request_generation,i.operation_generation,i.dataset,i.target_id,e.http_status,e.response_generation,e.body_bytes FROM animus_exchange_intents i LEFT JOIN animus_response_evidence e ON e.profile_id=i.profile_id AND e.exchange_id=i.exchange_id WHERE i.profile_id=? AND i.attachment_id=?',
+      [tx.profileId, id],
+    );
+    final shapes = <String, Map<String, Object?>>{};
+    final bodies = <String, List<int>>{};
+    for (final item in items) {
+      final body = (item['body_bytes'] as List?)?.cast<int>();
+      final bodyHash = body == null ? null : _digest(body);
+      final shape = <String, Object?>{
+        for (final key in const [
+          'path_kind',
+          'method',
+          'request_generation',
+          'operation_generation',
+          'dataset',
+          'target_id',
+          'http_status',
+          'response_generation',
+        ])
+          key: item[key],
+        'body_sha256': bodyHash,
+        'body_length': body?.length,
+      };
+      shapes.putIfAbsent(_digest(localBytes(shape)), () => shape);
+      if (body != null) bodies.putIfAbsent(bodyHash!, () => body);
+    }
+    final kept = (shapes.keys.toList()..sort())
+        .take(releasedExchangeLimit)
+        .map((key) => shapes[key]!)
+        .toList();
+    final referenced = {
+      for (final shape in kept)
+        if (shape['body_sha256'] case final String hash) hash,
+    }.toList()..sort();
+    final keptBodies = <String, String>{};
+    var bodyBytes = 0;
+    for (final hash in referenced) {
+      if (bodyBytes + bodies[hash]!.length > releasedBodyLimit) continue;
+      bodyBytes += bodies[hash]!.length;
+      keptBodies[hash] = base64Encode(bodies[hash]!);
+    }
+    final evidence = localBytes({
+      'format': 'alkion-animus-released-attachment/1',
+      'binding_base64': base64Encode(
+        (row['binding_bytes'] as List).cast<int>(),
+      ),
+      'recovery_generation': row['recovery_generation'],
+      'exchanges': kept,
+      'elided_exchanges': shapes.length - kept.length,
+      'bodies': keptBodies,
+      'elided_bodies': referenced.length - keptBodies.length,
+    });
+    final hash = _digest(evidence), now = _now();
+    final known =
+        await tx.getOptional(
+          'SELECT 1 FROM animus_released_attachments WHERE profile_id=? AND release_id=?',
+          [tx.profileId, hash],
+        ) !=
+        null;
+    final full =
+        !known &&
+        (await tx.get(
+                  'SELECT count(*) AS n FROM animus_released_attachments WHERE profile_id=? AND release_id<>?',
+                  [tx.profileId, releasedOverflowId],
+                ))['n']
+                as int >=
+            releasedAttachmentLimit;
+    final overflow = localBytes({
+      'format': 'alkion-animus-released-overflow/1',
+    });
+    await tx.execute(
+      'INSERT INTO animus_released_attachments VALUES(?,?,?,?,?,1,?,?,?) '
+      'ON CONFLICT(profile_id,release_id) DO UPDATE SET release_count=release_count+1,'
+      'exchange_count=exchange_count+excluded.exchange_count,last_released_at=excluded.last_released_at',
+      [
+        tx.profileId,
+        full ? releasedOverflowId : hash,
+        full ? null : id,
+        full ? overflow : evidence,
+        full ? _digest(overflow) : hash,
+        items.length,
+        now,
+        now,
+      ],
+    );
+    await tx.execute(
+      'INSERT INTO animus_attachment_release_leases VALUES(?,?,?)',
+      [tx.profileId, id, row['revision']],
+    );
+    await tx.execute(
+      'DELETE FROM animus_response_evidence WHERE profile_id=?1 AND exchange_id IN (SELECT exchange_id FROM animus_exchange_intents WHERE profile_id=?1 AND attachment_id=?2)',
+      [tx.profileId, id],
+    );
+    await tx.execute(
+      'DELETE FROM animus_exchange_intents WHERE profile_id=? AND attachment_id=?',
+      [tx.profileId, id],
+    );
+    await tx.execute(
+      'DELETE FROM animus_remote_attachments WHERE profile_id=? AND attachment_id=?',
+      [tx.profileId, id],
+    );
+    await tx.execute(
+      'DELETE FROM animus_attachment_release_leases WHERE profile_id=?',
+      [tx.profileId],
+    );
   }
 
   Future<bool> _retainedRemoteWork(LocalRead tx) async =>
@@ -391,23 +570,28 @@ final class RemoteRecoveryRepository {
 
   /// Denied credentials disclose no scoped G. Legacy requires an explicit
   /// validated required:false descriptor and can never downgrade a known G.
+  /// A 401/403 is an ordinary refusal whatever its body or media type; at most
+  /// [refusalEvidenceLimit] bytes of it are kept. Recovery codes never settle.
   Future<void> settleUnscopedResponse(
     RemoteExchange exchange, {
     required int status,
     required List<int> body,
     bool legacyDevelopment = false,
   }) async {
-    if (body.length > 8 * 1024 * 1024) _deny('invalid_remote_response');
-    final value = body.isEmpty
-        ? null
-        : decodeStrictAnimusJson(utf8.decode(body), maxDepth: 48);
-    if (value is Map &&
-        const {
-          'recovery_required',
-          'operation_recovery_required',
-          'recovery_unavailable',
-        }.contains(value['error'])) {
-      _deny();
+    final refusal = status == 401 || status == 403;
+    final kept = refusal && body.length > refusalEvidenceLimit
+        ? body.sublist(0, refusalEvidenceLimit)
+        : body;
+    if (refusal) {
+      if (hasRemoteRecoveryError(body)) _deny();
+    } else {
+      if (body.length > 8 * 1024 * 1024) _deny('invalid_remote_response');
+      final value = body.isEmpty
+          ? null
+          : decodeStrictAnimusJson(utf8.decode(body), maxDepth: 48);
+      if (value is Map && remoteRecoveryErrorCodes.contains(value['error'])) {
+        _deny();
+      }
     }
     await db.writeTransaction((tx) async {
       final intent = await _exchange(tx, exchange),
@@ -430,7 +614,7 @@ final class RemoteRecoveryRepository {
               null) {
         _deny();
       }
-      await _append(tx, exchange, status, null, body);
+      await _append(tx, exchange, status, null, kept);
       await tx.execute(
         "UPDATE animus_exchange_intents SET state='settled' WHERE profile_id=? AND exchange_id=?",
         [tx.profileId, exchange.id],
@@ -719,15 +903,22 @@ final class RemoteRecoveryRepository {
         'SELECT archive_id,covered_hash,manifest_hash FROM animus_recovery_archives WHERE profile_id=? ORDER BY archive_id',
         [tx.profileId],
       );
+      // Released wrong-account evidence is referenced, never re-archived, so
+      // it cannot push a later capture over the archive resource limit.
+      final released = await tx.getAll(
+        'SELECT release_id,binding_hash,evidence_hash FROM animus_released_attachments WHERE profile_id=? ORDER BY release_id',
+        [tx.profileId],
+      );
       final covered = await readCoveredState(
         (sql) => tx.getAll(sql),
-        excluding: const {'animus_recovery_archives'},
+        excluding: uncapturedRecoveryTables,
       );
       final bytes = localBytes({
         'format': 'alkion-animus-covered-state/1',
         'tables': covered.tables,
         'keys': covered.keys,
         'prior_archives': prior,
+        'released_attachments': released,
       });
       final manifest = localBytes({
         'format': 'alkion-animus-recovery-manifest/1',
@@ -737,6 +928,7 @@ final class RemoteRecoveryRepository {
         'local_generation': tx.token.generation,
         'inventory': covered.manifestInventory(),
         'prior_archives': prior,
+        'released_attachments': released,
       });
       if (maxBytes < 1 || bytes.length + manifest.length > maxBytes) {
         _deny('remote_archive_resource_limit');

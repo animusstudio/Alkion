@@ -1,7 +1,7 @@
 import '../catalog_ui/catalog_picker.dart';
 import '../catalog_ui/catalog_scope.dart';
 import '../catalog_ui/catalog_runtime_state.dart';
-import '../catalog_ui/catalog_evidence_widgets.dart';
+import '../catalog_ui/catalog_set_format.dart';
 import '../domain/catalog_execution.dart';
 import 'dart:async';
 
@@ -28,6 +28,7 @@ import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../units/unit_service.dart';
+import '../util/dates.dart';
 import '../util/error_message.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/pending_input.dart';
@@ -370,9 +371,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     final live = c.liveSet;
     if (live?.set.catalog case final evidence?) {
       if (!evidence.validForLogging) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppLocalizations.of(context).catalogRequired)),
-        );
+        showWToast(context, AppLocalizations.of(context).catalogRequired);
         return;
       }
     }
@@ -416,7 +415,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     });
   }
 
-  /// "Set N logged · Undo" for about five seconds after a newly logged
+  /// "Set N logged · Undo" for about three seconds after a newly logged
   /// working set. It replaces any earlier toast, so only the latest log can
   /// be undone from here.
   void _offerUndo(ActiveSessionController c, BlockState block, SetState set) {
@@ -426,7 +425,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       showWToast(
         context,
         l.sessionSetLogged(block.workingSets.indexOf(set) + 1),
-        duration: const Duration(seconds: 5),
+        duration: const Duration(seconds: 3),
         action: WToastAction(
           label: l.commonUndo,
           onPressed: () => _undo(c, set),
@@ -448,14 +447,17 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   void _removeSet(ActiveSessionController c, BlockState b, SetState s) {
     final index = c.removeSet(b, s);
     final l = AppLocalizations.of(context);
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     _trackUndoToast(
-      (ScaffoldMessenger.of(context)..hideCurrentSnackBar()).showSnackBar(
-        SnackBar(
-          content: Text(l.sessionSetRemoved),
-          action: SnackBarAction(
-            label: l.commonUndo,
-            onPressed: () => c.restoreSet(b, s, index),
-          ),
+      showWToast(
+        context,
+        l.sessionSetRemoved,
+        // Removal is the more destructive action: a longer Undo window than
+        // the 3 s logged-set toast.
+        duration: const Duration(seconds: 5),
+        action: WToastAction(
+          label: l.commonUndo,
+          onPressed: () => c.restoreSet(b, s, index),
         ),
       ),
     );
@@ -649,9 +651,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
         final origin = c.originSlotIdFor(b);
         final templateId = c.draft.templateId;
         if (origin == null || templateId == null) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(l.catalogRoutineNotice)));
+          showWToast(context, l.catalogRoutineNotice);
         } else {
           final template = await DayTemplateRepository.local(
             context.read<LocalDatabase>(),
@@ -690,9 +690,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
               await repo.commitPrepared(intent);
             } catch (_) {
               if (mounted) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text(l.catalogSaveFailed)));
+                showWToast(context, l.catalogSaveFailed, error: true);
               }
             }
             return;
@@ -707,9 +705,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                 expectedRevision: c.originSlotRevisionFor(b),
               );
           if (!applied) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text(l.catalogRoutineNotice)));
+            showWToast(context, l.catalogRoutineNotice);
           }
         }
       case 'again':
@@ -823,7 +819,8 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     return selection.displayLabel;
   }
 
-  /// A catalog-backed workout leaves the final rest without a Finish target.
+  /// "Next · …" for the rest row ([restNextLabel]), classic and catalog. A
+  /// catalog-backed workout leaves the final rest without a Finish target.
   String _restNextLabel(
     CatalogRuntimeState? catalog,
     ActiveSessionController controller,
@@ -833,24 +830,6 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     final next = controller.nextPendingSet;
     if (catalog != null && next == null) return '';
     return restNextLabel(l, unit, next);
-  }
-
-  String _typedNextLabel(
-    ActiveSessionController controller,
-    AppLocalizations l,
-  ) {
-    final next = controller.nextPendingSet;
-    if (next?.set.catalog case final evidence?) {
-      return l.sessionRestNext(
-        [
-          evidence.selection.displayLabel,
-          if (evidence.selection.contextLabel.isNotEmpty)
-            evidence.selection.contextLabel,
-          catalogEvidenceSummary(evidence, l),
-        ].where((s) => s.isNotEmpty).join(' · '),
-      );
-    }
-    return '';
   }
 
   Future<void> _changeSetup(
@@ -917,32 +896,27 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       );
       if (!mounted || !catalog.active || !c.hasSession) return;
       final selection = catalog.selectionFor(selected)!;
-      final reference = await SessionRepository.local(
-        context.read<LocalDatabase>(),
-      ).catalogLoadReference(selection, excludeSessionId: c.draft.sessionId);
+      final reference =
+          await SessionRepository.local(
+            context.read<LocalDatabase>(),
+          ).catalogLoadReference(
+            selection,
+            excludeSessionId: c.draft.sessionId,
+            includeLastSets: true,
+          );
       if (!mounted || !catalog.active || !c.hasSession) return;
+      // Attach first: the appended set prefills from this context's last
+      // session.
+      attachCatalogReference(b, selection, reference);
       final added = c.appendCatalogSet(
         b,
         selection,
         dependencies: catalog.dependenciesFor(selected),
       );
-      if (reference.bestMetrics?['reported_load'] case final best?) {
-        b.catalogBaselines[selection.compatibilityKey] = best;
-      }
-      b.bestKg = reference.bestKg;
-      if (reference.lastMetrics case final metrics?) {
-        b.catalogLastMetrics[selection.compatibilityKey] = metrics;
-      }
-      final last = reference.last;
-      b.lastTop = last == null
-          ? null
-          : (weight: last.weightKg, reps: last.reps, date: last.date);
       c.focusSet(added);
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(l.catalogSaveFailed)));
+        showWToast(context, l.catalogSaveFailed, error: true);
       }
     }
   }
@@ -1037,9 +1011,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                     restTotal: controller.restTotal,
                     restEndedAt: controller.restEndedAt,
                     showRestRow: controller.hasLoggedSet,
-                    nextLabel: controller.nextPendingSet?.set.catalog != null
-                        ? _typedNextLabel(controller, l)
-                        : _restNextLabel(catalog, controller, l, unit),
+                    nextLabel: _restNextLabel(catalog, controller, l, unit),
                     onMinimize: () {
                       // A Finish in flight must reach its summary.
                       if (_finishing) return;
@@ -1141,45 +1113,36 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                             final selection = set.catalog!.selection;
                             final metrics = block
                                 .catalogLastMetrics[selection.compatibilityKey];
-                            if (metrics == null) {
+                            final values = metrics == null
+                                ? ''
+                                : catalogSetCompact(
+                                    CatalogSetEvidence(
+                                      selection: selection,
+                                      metrics: metrics,
+                                    ),
+                                    l,
+                                  );
+                            if (values.isEmpty) {
                               return const SizedBox.shrink();
                             }
+                            // One dim line, like the classic card's:
+                            // "last 18 kg × 11 · 3d ago".
+                            final date = block.lastTop?.date;
                             return Padding(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 16,
                               ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  FitLabel(
-                                    catalogEvidenceSummary(
-                                      CatalogSetEvidence(
-                                        selection: selection,
-                                        metrics: metrics,
-                                      ),
-                                      l,
-                                    ),
-                                    maxLines: 3,
-                                    style: WorkoutType.body(
-                                      size: 12,
-                                      color: tokens.dim,
-                                    ),
-                                  ),
-                                  if (!set.done)
-                                    TextButton(
-                                      onPressed: () {
-                                        commitPendingInput();
-                                        controller.useCatalogValues(
-                                          set,
-                                          metrics,
-                                        );
-                                      },
-                                      style: TextButton.styleFrom(
-                                        minimumSize: const Size(48, 48),
-                                      ),
-                                      child: Text(l.catalogUseLast),
-                                    ),
-                                ],
+                              child: FitLabel(
+                                key: const Key('catalog-last-reference'),
+                                [
+                                  l.catalogLastRef(values),
+                                  if (date != null) localizedDaysAgo(l, date),
+                                ].join(' · '),
+                                maxLines: 2,
+                                style: WorkoutType.body(
+                                  size: 12,
+                                  color: tokens.dim,
+                                ),
                               ),
                             );
                           },
@@ -1189,8 +1152,6 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                           },
                           onSetChanged: (_, __) => controller.markChanged(),
                           onRir: (_, s, v) => controller.setRirFromPrompt(s, v),
-                          onClearRir: (_, s) =>
-                              controller.setRirFromPrompt(s, null),
                           onMarkNotDone: (_, s) => _undo(controller, s),
                           onRemoveSet: (b, s) => _removeSet(controller, b, s),
                           onMenu: (b) => _openBlockMenu(controller, b),

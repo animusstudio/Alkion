@@ -11,13 +11,22 @@ final class AnimusRecoveryFailure implements Exception {
   String toString() => 'Animus recovery requires review';
 }
 
+/// This profile stays attached to another account: its access was verified, or
+/// it holds evidence, work or recovery state that cannot be released.
+final class AnimusAttachmentMismatch extends AnimusRecoveryFailure {
+  const AnimusAttachmentMismatch();
+  @override
+  String toString() => 'Animus profile is attached to another account';
+}
+
+/// A malformed refusal of a covered write: settled, never fenced or terminal.
+final class _UncertainRefusal implements Exception {
+  const _UncertainRefusal();
+}
+
 const recoveryGenerationHeader = 'X-Hub-Recovery-Generation';
 const operationGenerationHeader = 'X-Hub-Operation-Generation';
-const _recoveryErrors = {
-  'recovery_required',
-  'operation_recovery_required',
-  'recovery_unavailable',
-};
+const _recoveryErrors = remoteRecoveryErrorCodes;
 final _uuid = RegExp(
   r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
 );
@@ -37,6 +46,23 @@ String? recoveryResponseGeneration(AnimusHttpResponse response) {
     throw const FormatException('Invalid recovery response metadata');
   }
   return matches.single.value;
+}
+
+/// A 401/403 has no recovery signal only without any recovery generation
+/// header of that name and without a recovery error code in its body. A
+/// duplicate or malformed header throws, so it still fences.
+bool _recoverySignal(AnimusHttpResponse response) =>
+    recoveryResponseGeneration(response) != null ||
+    hasRemoteRecoveryError(response.body);
+
+bool _wellFormed(AnimusHttpResponse response) {
+  if (response.body.isEmpty) return true;
+  try {
+    _object(response, 8 * 1024 * 1024);
+    return true;
+  } on FormatException {
+    return false;
+  }
 }
 
 Map<String, dynamic> _object(AnimusHttpResponse response, int limit) {
@@ -136,7 +162,10 @@ final class DurableAnimusRecovery implements AnimusRecoveryPort {
   Future<RemoteExchange> _begin(Future<RemoteExchange> pending) async {
     try {
       return await pending;
-    } on StoreException {
+    } on StoreException catch (error) {
+      if (error.category == 'remote_attachment_mismatch') {
+        throw const AnimusAttachmentMismatch();
+      }
       throw const AnimusRecoveryFailure();
     }
   }
@@ -197,13 +226,9 @@ final class DurableAnimusRecovery implements AnimusRecoveryPort {
       response = await send(const {});
       if (!current()) return await _stop(exchange, response);
       if (response.statusCode == 401 || response.statusCode == 403) {
-        if (recoveryResponseGeneration(response) != null ||
-            response.body.isNotEmpty &&
-                _recoveryErrors.contains(
-                  _object(response, 64 * 1024)['error'],
-                )) {
-          return await _stop(exchange, response);
-        }
+        // Without a recovery signal this is an ordinary refusal, whatever the
+        // body or media type: 401 re-authenticates, 403 is access denied.
+        if (_recoverySignal(response)) return await _stop(exchange, response);
         await _repository.settleUnscopedResponse(
           exchange,
           status: response.statusCode,
@@ -291,18 +316,20 @@ final class DurableAnimusRecovery implements AnimusRecoveryPort {
       response = await send(headers);
       if (!current()) return await _stop(exchange, response);
       if (response.statusCode == 401 || response.statusCode == 403) {
-        if (recoveryResponseGeneration(response) != null ||
-            response.body.isNotEmpty &&
-                _recoveryErrors.contains(
-                  _object(response, 64 * 1024)['error'],
-                )) {
-          return await _stop(exchange, response);
-        }
+        if (_recoverySignal(response)) return await _stop(exchange, response);
+        // A read refusal is ordinary whatever its body. A malformed refusal of
+        // an action or status query settles without a fence but stays
+        // uncertain, retryable through operation status, never rejected.
+        final uncertain =
+            (request.path == RemoteApiPath.action ||
+                request.path == RemoteApiPath.operationStatus) &&
+            !_wellFormed(response);
         await _repository.settleUnscopedResponse(
           exchange,
           status: response.statusCode,
           body: response.body,
         );
+        if (uncertain) throw const _UncertainRefusal();
         return response;
       }
       final generation = recoveryResponseGeneration(response);
@@ -345,6 +372,8 @@ final class DurableAnimusRecovery implements AnimusRecoveryPort {
       return response;
     } on AnimusRecoveryFailure {
       rethrow;
+    } on _UncertainRefusal {
+      throw const AnimusHttpFailure(AnimusHttpFailureKind.invalidResponse);
     } on Object {
       return await _stop(exchange, response);
     }

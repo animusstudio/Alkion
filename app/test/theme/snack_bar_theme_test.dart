@@ -12,34 +12,55 @@ void main() {
   for (final brightness in Brightness.values) {
     for (final accent in accents) {
       test('the ${brightness.name} theme with $accent gives every SnackBar '
-          'the Alkion look', () {
+          'the look of the other cards', () {
         final theme = buildTheme(brightness, accent);
         final tokens = theme.extension<WorkoutTokens>()!;
-        final inverse = brightness == Brightness.dark
-            ? WorkoutTokens.light(accent)
-            : WorkoutTokens.dark(accent);
         final snackBar = theme.snackBarTheme;
         expect(snackBar.behavior, SnackBarBehavior.floating);
-        expect(snackBar.backgroundColor, tokens.text);
-        expect(snackBar.contentTextStyle!.color, tokens.bg);
+        // The same fill and border tokens as the app's other cards (`WCard`
+        // and the tonal panels use a `surface` or `surface2` fill with a
+        // `line` border), in both themes.
+        expect(snackBar.backgroundColor, tokens.surface2);
+        expect(snackBar.contentTextStyle!.color, tokens.text);
         expect(snackBar.contentTextStyle!.fontFamily, contains('SpaceGrotesk'));
-        expect(snackBar.actionTextColor, inverse.accentText);
+        expect(snackBar.actionTextColor, tokens.accentText);
         expect(snackBar.elevation, 0);
         expect(snackBar.insetPadding, const EdgeInsets.fromLTRB(16, 8, 16, 12));
+        // Sideways only: a downward swipe collides with one-handed mode.
+        expect(snackBar.dismissDirection, DismissDirection.horizontal);
+        final shape = snackBar.shape! as RoundedRectangleBorder;
+        expect(shape.borderRadius, BorderRadius.circular(AppRadius.panel));
+        expect(shape.side.color, tokens.line);
+        expect(shape.side.width, 1);
+
+        // Text and action on the card.
         expect(
-          contrastRatio(tokens.bg, tokens.text),
+          contrastRatio(tokens.text, tokens.surface2),
           greaterThanOrEqualTo(4.5),
         );
         expect(
-          contrastRatio(inverse.accentText, tokens.text),
+          contrastRatio(tokens.accentText, tokens.surface2),
           greaterThanOrEqualTo(4.5),
-          reason: 'the action on the toast',
+          reason: 'the action on the card',
         );
-        // Sites that still set a danger background keep legible content.
-        expect(
-          contrastRatio(tokens.bg, tokens.danger),
-          greaterThanOrEqualTo(4.5),
-        );
+        // An error's danger border still reads against the page behind it.
+        for (final page in [tokens.bg, tokens.surface]) {
+          expect(
+            contrastRatio(tokens.danger, page),
+            greaterThanOrEqualTo(3),
+            reason: 'the error border against $page',
+          );
+        }
+        // Glyphs on the card: info (the accent), error and the success
+        // override.
+        expect(tokens.info, tokens.accentText);
+        for (final glyph in [tokens.info, tokens.danger, tokens.success]) {
+          expect(
+            contrastRatio(glyph, tokens.surface2),
+            greaterThanOrEqualTo(3),
+            reason: 'the glyph $glyph on the card',
+          );
+        }
       });
     }
   }

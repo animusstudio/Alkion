@@ -306,6 +306,7 @@ Future<SessionDraft> restoreFinishedDraft(
         : await sessionRepo.catalogLoadReference(
             typedSelection,
             excludeSessionId: f.sessionId,
+            includeLastSets: true,
           );
     final bestKg = typedSelection != null
         ? catalogReference!.bestKg
@@ -348,6 +349,10 @@ Future<SessionDraft> restoreFinishedDraft(
             typedSelection.compatibilityKey:
                 catalogReference!.bestMetrics!['reported_load']!,
         },
+        catalogLastSets: {
+          if (typedSelection != null && catalogReference!.lastSets.isNotEmpty)
+            typedSelection.compatibilityKey: catalogReference.lastSets,
+        },
         exercise: exercise,
         resolved: resolved,
         warmupSets: [
@@ -384,16 +389,27 @@ Future<SessionDraft> restoreFinishedDraft(
           block.catalogDependencies.add(dependency);
         }
       }
-      if (!block.catalogBaselines.containsKey(selection.compatibilityKey)) {
+      final key = selection.compatibilityKey;
+      final needsBaseline = !block.catalogBaselines.containsKey(key);
+      // Only the reference is filled, so sets appended later can prefill;
+      // the stored and planned sets are never rewritten.
+      final needsLastSets = !block.catalogLastSets.containsKey(key);
+      if (needsBaseline || needsLastSets) {
         final reference = await sessionRepo.catalogLoadReference(
           selection,
           excludeSessionId: f.sessionId,
+          includeLastSets: needsLastSets,
         );
-        if (reference.bestMetrics?['reported_load'] case final best?) {
-          block.catalogBaselines[selection.compatibilityKey] = best;
+        if (needsBaseline) {
+          if (reference.bestMetrics?['reported_load'] case final best?) {
+            block.catalogBaselines[key] = best;
+          }
+          if (reference.lastMetrics case final metrics?) {
+            block.catalogLastMetrics[key] = metrics;
+          }
         }
-        if (reference.lastMetrics case final metrics?) {
-          block.catalogLastMetrics[selection.compatibilityKey] = metrics;
+        if (needsLastSets && reference.lastSets.isNotEmpty) {
+          block.catalogLastSets[key] = reference.lastSets;
         }
       }
     }

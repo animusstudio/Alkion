@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/data/models.dart';
+import 'package:alkion/domain/catalog_execution.dart';
 import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/session/active_session_controller.dart';
 import 'package:alkion/session/live_set_card.dart';
@@ -50,6 +51,46 @@ SetState _s(String id, {bool warmup = false, bool done = false}) => SetState(
   done: done,
 );
 
+/// A catalog set in a load-and-reps context; [load] empty leaves it without
+/// that value.
+SetState _typed(
+  String id, {
+  bool warmup = false,
+  bool done = false,
+  String load = '18',
+}) => SetState(
+  id: id,
+  weightKg: 0,
+  reps: 0,
+  rir: null,
+  isWarmup: warmup,
+  done: done,
+  catalog: CatalogSetEvidence(
+    selection: CatalogSelectionEvidence(
+      exerciseId: _ex.id,
+      contextId: 'machine-a',
+      contextRevision: 1,
+      profile: CatalogMeasurementProfileEvidence.forKey('load_reps'),
+      displayLabel: 'Synthetic leg press',
+      contextLabel: 'Machine A',
+      resistanceSource: 'external',
+      loadConvention: 'reported_mass',
+    ),
+    metrics: {
+      'reported_load': CatalogMetricEvidence.fromInput(
+        load,
+        metric: 'reported_load',
+        unit: 'kg',
+      ),
+      'repetitions': CatalogMetricEvidence.fromInput(
+        '12',
+        metric: 'repetitions',
+        unit: 'count',
+      ),
+    },
+  ),
+);
+
 void main() {
   setUpAll(preloadAppFonts);
   final unit = UnitService();
@@ -57,62 +98,79 @@ void main() {
 
   for (final brightness in Brightness.values) {
     for (final code in ['en', 'de', 'es', 'it']) {
-      testWidgets(
-        'the log action stays readable and logs once at 320dp 2x $code ${brightness.name}',
-        (tester) async {
-          final s = _s('live');
-          final live = (block: _block([], [s]), set: s);
-          final local = lookupAppLocalizations(Locale(code));
-          final label = LogSetBar.labelFor(local, unit, live, false)!;
-          var logs = 0;
-          await tester.pumpWidget(
-            wrapL10n(
-              Theme(
-                data: buildTheme(brightness, defaultWorkoutAccent),
-                child: MediaQuery(
-                  data: const MediaQueryData(textScaler: TextScaler.linear(2)),
-                  child: Align(
-                    alignment: Alignment.bottomCenter,
-                    child: SizedBox(
-                      width: 320,
-                      child: LogSetBar(
-                        live: live,
-                        canFinish: false,
-                        unit: unit,
-                        onLog: () => logs++,
-                        onFinish: () {},
+      for (final kind in ['set', 'warm-up', 'catalog']) {
+        testWidgets(
+          'the log action stays readable and logs once at 320dp 2x $kind $code ${brightness.name}',
+          (tester) async {
+            final s = switch (kind) {
+              'warm-up' => _s('live', warmup: true),
+              'catalog' => _typed('live'),
+              _ => _s('live'),
+            };
+            final live = s.isWarmup
+                ? (block: _block([s], []), set: s)
+                : (block: _block([], [s]), set: s);
+            final local = lookupAppLocalizations(Locale(code));
+            final label = LogSetBar.labelFor(local, unit, live, false)!;
+            expect(
+              label,
+              s.isWarmup ? local.sessionLogWarmup : local.sessionLogSet(1),
+            );
+            var logs = 0;
+            await tester.pumpWidget(
+              wrapL10n(
+                Theme(
+                  data: buildTheme(brightness, defaultWorkoutAccent),
+                  child: MediaQuery(
+                    data: const MediaQueryData(
+                      textScaler: TextScaler.linear(2),
+                    ),
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: SizedBox(
+                        width: 320,
+                        child: LogSetBar(
+                          live: live,
+                          canFinish: false,
+                          unit: unit,
+                          onLog: () => logs++,
+                          onFinish: () {},
+                        ),
                       ),
                     ),
                   ),
                 ),
+                locale: Locale(code),
               ),
-              locale: Locale(code),
-            ),
-          );
-          final bar = find.byKey(const Key('log-set-bar'));
-          expect(tester.getSize(bar).height, greaterThanOrEqualTo(48));
-          final paragraph = tester.renderObject<RenderParagraph>(
-            find.text(label),
-          );
-          expect(paragraph.didExceedMaxLines, isFalse);
-          expect(paragraph.text.toPlainText(), label);
-          expectNoSplitWords(tester);
-          final button = tester.widget<FilledButton>(bar);
-          final background = button.style!.backgroundColor!.resolve({})!;
-          final foreground = button.style!.foregroundColor!.resolve({})!;
-          final a = background.computeLuminance(),
-              b = foreground.computeLuminance();
-          expect(
-            a > b ? (a + .05) / (b + .05) : (b + .05) / (a + .05),
-            greaterThanOrEqualTo(4.5),
-          );
-          await tester.tap(bar);
-          expect(logs, 1);
-          expect(s.weightKg, 140);
-          expect(s.reps, 6);
-          expect(tester.takeException(), isNull);
-        },
-      );
+            );
+            final bar = find.byKey(const Key('log-set-bar'));
+            expect(tester.getSize(bar).height, greaterThanOrEqualTo(48));
+            final paragraph = tester.renderObject<RenderParagraph>(
+              find.text(label),
+            );
+            expect(paragraph.didExceedMaxLines, isFalse);
+            expect(paragraph.text.toPlainText(), label);
+            expect(tester.getSemantics(bar).label, label);
+            expectNoSplitWords(tester);
+            final button = tester.widget<FilledButton>(bar);
+            final background = button.style!.backgroundColor!.resolve({})!;
+            final foreground = button.style!.foregroundColor!.resolve({})!;
+            final a = background.computeLuminance(),
+                b = foreground.computeLuminance();
+            expect(
+              a > b ? (a + .05) / (b + .05) : (b + .05) / (a + .05),
+              greaterThanOrEqualTo(4.5),
+            );
+            await tester.tap(bar);
+            expect(logs, 1);
+            if (kind == 'set') {
+              expect(s.weightKg, 140);
+              expect(s.reps, 6);
+            }
+            expect(tester.takeException(), isNull);
+          },
+        );
+      }
     }
   }
 
@@ -125,14 +183,27 @@ void main() {
     test('pending working set', () {
       expect(
         LogSetBar.labelFor(l, unit, (block: b, set: a2), true),
-        'Log set 2 · 140kg × 6',
+        'Log set 2',
       );
     });
     test('pending warm-up', () {
       expect(
         LogSetBar.labelFor(l, unit, (block: b, set: w), false),
-        'Log warm-up · 70kg × 8',
+        'Log warm-up',
       );
+    });
+    test('catalog sets read like classic ones, with or without values', () {
+      final tw = _typed('tw', warmup: true);
+      final t1 = _typed('t1', done: true);
+      final t2 = _typed('t2');
+      final empty = _typed('t3', load: '');
+      final typed = _block([tw], [t1, t2, empty]);
+      String? label(SetState s) =>
+          LogSetBar.labelFor(l, unit, (block: typed, set: s), true);
+      expect(label(t2), 'Log set 2');
+      expect(label(empty), 'Log set 3');
+      expect(label(tw), 'Log warm-up');
+      expect(label(t1), 'Update set 1');
     });
     test('logged working set being corrected', () {
       expect(
@@ -174,7 +245,18 @@ void main() {
     );
     final bar = find.byKey(const Key('log-set-bar'));
     expect(tester.getSize(bar).height, 56);
-    expect(find.bySemanticsLabel('Log set 1 · 140kg × 6'), findsOneWidget);
+    expect(find.text('Log set 1'), findsOneWidget);
+    expect(find.bySemanticsLabel('Log set 1'), findsOneWidget);
+    expect(
+      tester.getSemantics(bar),
+      matchesSemantics(
+        label: 'Log set 1',
+        isButton: true,
+        hasEnabledState: true,
+        isEnabled: true,
+        hasTapAction: true,
+      ),
+    );
     await tester.tap(bar);
     expect(logs, 1);
   });
@@ -266,7 +348,8 @@ void main() {
       const Duration(milliseconds: 800),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Log set 1 · 142kg × 6'), findsOneWidget);
+    // The label names the set; the value is on the card.
+    expect(find.text('Log set 1'), findsOneWidget);
     await tester.tap(find.byKey(const Key('log-set-bar')));
     await tester.pump();
     expect(s.weightKg, 142);

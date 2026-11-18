@@ -40,6 +40,27 @@ void main() {
     });
   }
 
+  for (final (name, build) in [
+    ('dark', WorkoutTokens.dark),
+    ('light', WorkoutTokens.light),
+  ]) {
+    for (final accent in accents) {
+      test('$name: focus and info are accentText and focus reads ≥ 3:1 on '
+          'bg and surface for $accent', () {
+        final t = build(accent);
+        expect(t.focus, t.accentText);
+        expect(t.info, t.accentText);
+        for (final s in [t.bg, t.surface]) {
+          expect(
+            contrastRatio(t.focus, s),
+            greaterThanOrEqualTo(3),
+            reason: '$s',
+          );
+        }
+      });
+    }
+  }
+
   test('every accent converges without going black or shifting hue', () {
     for (final accent in accents) {
       final ink = WorkoutTokens.light(accent).accentText;

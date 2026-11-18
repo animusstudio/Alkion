@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -19,6 +20,7 @@ import 'package:alkion/session/active_session_screen.dart';
 import 'package:alkion/session/confirmed_set_feedback.dart';
 import 'package:alkion/widgets/state_motion.dart';
 import 'package:alkion/session/session_manager.dart';
+import 'package:alkion/session/session_header.dart';
 import 'package:alkion/session/set_line.dart';
 import 'package:alkion/session/exercise_picker_sheet.dart';
 import 'package:alkion/settings/settings_service.dart';
@@ -232,9 +234,10 @@ void main() {
         );
         await tester.pump(const Duration(milliseconds: 400));
         expect(
-          find.text('Rep range: ${range == null ? '—' : '5–9'}'),
-          findsOneWidget,
+          find.byKey(const Key('live-rep-range')),
+          range == null ? findsNothing : findsOneWidget,
         );
+        if (range != null) expect(find.text('5–9'), findsOneWidget);
         expect(restored.workingSets.single.toJson(), observations);
         expect(restored.workingSets.single.reps, 8);
         await _teardown(tester);
@@ -307,8 +310,10 @@ void main() {
           );
           await tester.pump(const Duration(milliseconds: 400));
           expect(
-            find.text('Rep range: ${range == null ? '—' : '5–9'}'),
-            profile == 'load_reps' ? findsOneWidget : findsNothing,
+            find.byKey(const Key('live-rep-range')),
+            profile == 'load_reps' && range != null
+                ? findsOneWidget
+                : findsNothing,
           );
           expect(
             restored.workingSets.single.catalog!.toJson(),
@@ -388,12 +393,12 @@ void main() {
       await tester.pumpWidget(_harness(controller, settings: settings));
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.byKey(const Key('rir-2')), findsNothing);
-      expect(find.text('Rep range: 8–10'), findsNothing);
+      expect(find.byKey(const Key('live-rep-range')), findsNothing);
       await tester.runAsync(() => settings.setRirControls(RirControls.show));
       await tester.runAsync(() => settings.setRepEntry(RepEntry.range));
       await tester.pump();
       expect(find.byKey(const Key('rir-2')), findsOneWidget);
-      expect(find.text('Rep range: 8–10'), findsOneWidget);
+      expect(find.byKey(const Key('live-rep-range')), findsOneWidget);
       expect(a.toJson(), before);
       expect(block.resolved, same(prescription));
       await tester.runAsync(() => settings.setRestCompoundSeconds(45));
@@ -404,7 +409,7 @@ void main() {
       await tester.runAsync(() => settings.setRepEntry(RepEntry.fixed));
       await tester.pump();
       expect(find.byKey(const Key('rir-2')), findsNothing);
-      expect(find.text('Rep range: 8–10'), findsNothing);
+      expect(find.byKey(const Key('live-rep-range')), findsNothing);
       expect(a.toJson(), before);
       await tester.tap(find.byKey(const Key('log-set-bar')));
       await tester.pump();
@@ -772,6 +777,11 @@ void main() {
       expect(controller.resting, isTrue);
       expect(controller.restTotal, settings.restCompoundSeconds);
       expect(settings.restCompoundSeconds, 180);
+      // The logged-set Undo toast stays up for three seconds.
+      expect(
+        tester.widget<SnackBar>(find.byType(SnackBar)).duration,
+        const Duration(seconds: 3),
+      );
 
       await _teardown(tester);
     },
@@ -815,6 +825,11 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
 
       expect(block.workingSets, [s1]);
+      // Removal, the more destructive action, offers Undo for five seconds.
+      expect(
+        tester.widget<SnackBar>(find.byType(SnackBar)).duration,
+        const Duration(seconds: 5),
+      );
 
       // A real tap on the SnackBarAction is geometrically unreliable in a
       // narrow test surface (the bar sits right above the pinned LogSetBar and
@@ -1096,7 +1111,8 @@ void main() {
       await tester.tap(prompt);
       await tester.pump();
       expect(a.rir, 2);
-      final compactLabel = find.text('Synthetic execution · Machine A');
+      // The line no longer repeats the exercise; tap the logged line itself.
+      final compactLabel = find.byType(SetLine).first;
       await Scrollable.ensureVisible(
         tester.element(compactLabel),
         alignment: .5,
@@ -1109,8 +1125,13 @@ void main() {
       await tester.pump();
       expect(controller.liveSet!.set, same(a));
       expect(find.byType(LiveSetCard), findsOneWidget);
-      await tester.ensureVisible(find.byKey(const Key('live-clear-rir')));
-      await tester.tap(find.byKey(const Key('live-clear-rir')));
+      // Tapping the selected chip clears the RIR (no Clear RIR button).
+      final selected = find.descendant(
+        of: find.byType(LiveSetCard),
+        matching: find.byKey(const Key('rir-2')),
+      );
+      await tester.ensureVisible(selected);
+      await tester.tap(selected);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(a.rir, isNull);
@@ -1273,6 +1294,93 @@ void main() {
     },
   );
 
+  for (final scale in [1.0, 2.0]) {
+    testWidgets(
+      'catalog card: one dim last line, no use-last button, short log bar at 320dp $scale×',
+      (tester) async {
+        real.setPhone(tester, width: 320, textScale: scale);
+        final controller = ActiveSessionController();
+        addTearDown(controller.dispose);
+        final a = _typedSet('typed-a', _typedEvidence(load: '18', unit: 'kg'));
+        final block = _block(warm: [], work: [a])
+          ..catalogSelection = a.catalog!.selection;
+        final ago = DateTime.now().subtract(const Duration(days: 3));
+        block.catalogLastMetrics[a.catalog!.selection.compatibilityKey] =
+            _typedEvidence(load: '18', unit: 'kg').metrics;
+        block.lastTop = (
+          weight: 18,
+          reps: 8,
+          date:
+              '${ago.year}-${ago.month.toString().padLeft(2, '0')}-${ago.day.toString().padLeft(2, '0')}',
+        );
+        controller.seedForTest(_draftWith([block]));
+        final before = a.catalog!.toJson();
+        await tester.pumpWidget(_harness(controller));
+        await tester.pump(const Duration(milliseconds: 400));
+        final reference = find.byKey(const Key('catalog-last-reference'));
+        expect(reference, findsOneWidget);
+        expect(
+          tester.widget<FitLabel>(reference).text,
+          'last 18 kg × 08 · 3d ago',
+        );
+        expect(find.text('Use last values'), findsNothing);
+        expect(find.textContaining('Load (kg):'), findsNothing);
+        expect(find.text('Log set 1'), findsOneWidget);
+        expect(
+          tester.getSemantics(find.byKey(const Key('log-set-bar'))).label,
+          'Log set 1',
+        );
+        expect(a.catalog!.toJson(), before);
+        expectNoSplitWords(tester);
+        expect(tester.takeException(), isNull);
+        await _teardown(tester);
+      },
+    );
+  }
+
+  testWidgets('a catalog set without history has no last line', (tester) async {
+    real.setPhone(tester, width: 412);
+    final controller = ActiveSessionController();
+    addTearDown(controller.dispose);
+    final a = _typedSet('typed-a', _typedEvidence(load: '18', unit: 'kg'));
+    final block = _block(warm: [], work: [a])
+      ..catalogSelection = a.catalog!.selection;
+    controller.seedForTest(_draftWith([block]));
+    await tester.pumpWidget(_harness(controller));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(LiveSetCard), findsOneWidget);
+    expect(find.byKey(const Key('catalog-last-reference')), findsNothing);
+    expect(find.textContaining('last '), findsNothing);
+    await _teardown(tester);
+  });
+
+  testWidgets(
+    'logging a catalog set without its required values toasts and changes nothing',
+    (tester) async {
+      real.setPhone(tester, width: 412);
+      final controller = ActiveSessionController();
+      addTearDown(controller.dispose);
+      final a = _typedSet('typed-a', _typedEvidence(load: ''));
+      final block = _block(warm: [], work: [a])
+        ..catalogSelection = a.catalog!.selection;
+      controller.seedForTest(_draftWith([block]));
+      final before = jsonEncode(controller.draft.toJson());
+      await tester.pumpWidget(_harness(controller));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Log set 1'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('log-set-bar')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      final l = lookupAppLocalizations(const Locale('en'));
+      expect(find.text(l.catalogRequired), findsOneWidget);
+      expect(a.done, isFalse);
+      expect(controller.resting, isFalse);
+      expect(jsonEncode(controller.draft.toJson()), before);
+      expect(tester.takeException(), isNull);
+      await _teardown(tester);
+    },
+  );
+
   testWidgets(
     'backgrounded, the open screen leaves the rest end to the notification',
     (tester) async {
@@ -1344,6 +1452,43 @@ void main() {
       await _teardown(tester);
     },
   );
+
+  for (final code in ['en', 'de', 'es', 'it']) {
+    testWidgets(
+      'after a catalog log, Next names the set and values at 320dp 2× $code',
+      (tester) async {
+        real.setPhone(tester, width: 320, textScale: 2);
+        final controller = ActiveSessionController();
+        addTearDown(controller.dispose);
+        final a = _typedSet('typed-a', _typedEvidence(load: '60', unit: 'kg'));
+        final b = _typedSet('typed-b', _typedEvidence(context: 'Machine B'));
+        final block = _block(warm: [], work: [a, b])
+          ..catalogSelection = a.catalog!.selection;
+        controller.seedForTest(_draftWith([block]));
+        await tester.pumpWidget(_harness(controller, locale: Locale(code)));
+        await tester.pump(const Duration(milliseconds: 400));
+        final l = lookupAppLocalizations(Locale(code));
+        expect(find.text(l.sessionLogSet(1)), findsOneWidget);
+        await tester.tap(find.byKey(const Key('log-set-bar')));
+        for (var i = 0; i < 6; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        expect(a.done, isTrue);
+        final next = l.sessionRestNext(
+          '${l.sessionNextSet(2)} · 020.500 lb × 08',
+        );
+        expect(find.text(next), findsOneWidget);
+        expect(find.text(l.sessionLogSet(2)), findsOneWidget);
+        expectNoSplitWords(tester, within: find.byType(SessionHeader));
+        expectNoSplitWords(
+          tester,
+          within: find.byKey(const Key('log-set-bar')),
+        );
+        expect(tester.takeException(), isNull);
+        await _teardown(tester);
+      },
+    );
+  }
 
   testWidgets(
     'timers frozen while locked: a rest that ended meanwhile gets no late buzz',

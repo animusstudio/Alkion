@@ -699,7 +699,10 @@ String animusEntryStatus(AppLocalizations l, AnimusConnectionController c) =>
     switch (c.state) {
       AnimusConnectionState.disabled => l.alkionEntryUnavailable,
       AnimusConnectionState.misconfigured => l.animusMisconfigured,
-      AnimusConnectionState.disconnected => l.animusDisconnected,
+      AnimusConnectionState.disconnected =>
+        c.issue == AnimusConnectionIssue.serverSignOutUnconfirmed
+            ? l.animusSignOutUnconfirmed
+            : l.animusDisconnected,
       AnimusConnectionState.authenticating => l.animusAuthenticating,
       AnimusConnectionState.awaitingConfirmation =>
         l.animusAwaitingConfirmation,
@@ -707,10 +710,12 @@ String animusEntryStatus(AppLocalizations l, AnimusConnectionController c) =>
       AnimusConnectionState.verified => l.animusVerified,
       AnimusConnectionState.accessDenied => l.animusAccessDenied,
       AnimusConnectionState.cancelled => l.animusCancelled,
+      AnimusConnectionState.timedOut => l.animusSignInTimedOut,
       AnimusConnectionState.unavailable => switch (c.issue) {
         AnimusConnectionIssue.secureStorageUnavailable =>
           l.animusSecureStorageUnavailable,
         AnimusConnectionIssue.accountChanged => l.animusAccountChanged,
+        AnimusConnectionIssue.differentAccount => l.animusDifferentAccount,
         AnimusConnectionIssue.sessionExpired => l.animusSessionExpired,
         AnimusConnectionIssue.offline => l.animusOffline,
         AnimusConnectionIssue.timeout => l.animusTimeout,

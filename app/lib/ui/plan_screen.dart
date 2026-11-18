@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../data/day_template_repository.dart';
+import '../data/models.dart';
 import '../l10n/app_localizations.dart';
 import '../store/local_store.dart';
 import '../settings/settings_service.dart';
@@ -16,6 +17,7 @@ import '../widgets/pending_input.dart';
 import '../widgets/text_motion.dart';
 import '../widgets/w_dialog.dart';
 import 'day_editor.dart';
+import 'day_view.dart';
 import 'editor_guard.dart';
 import 'exercise_editor.dart';
 import 'exercise_library_tab.dart';
@@ -25,16 +27,30 @@ import 'targets_tab.dart';
 
 // ── Editor-route state ────────────────────────────────────────────────────
 
-/// Describes which in-place editor is currently open.
+/// Describes which in-place page is currently open.
 /// [kind] is `'day'` or `'exercise'`; [id] is the row id (null = new).
-/// Built fresh for every open, so an editor still fading out can never
-/// answer for, or close, the one that replaced it.
+/// Built fresh for every open and every mode change, so a page still fading
+/// out can never answer for, or close, the one that replaced it.
 class _EditorRoute {
-  _EditorRoute({required this.kind, required this.id});
+  _EditorRoute({
+    required this.kind,
+    required this.id,
+    this.editing = true,
+    this.returnToView = false,
+  }) : assert(editing || (kind == 'day' && id != null)),
+       assert(editing || !returnToView);
   final String kind; // 'day' | 'exercise'
   final String? id;
 
-  /// Bound by this route's editor to report unsaved edits.
+  /// False for a day's read-only view, true for an editor.
+  final bool editing;
+
+  /// An editor opened from the day's view: leaving it (Back, Discard,
+  /// Save) shows the view again instead of the list.
+  final bool returnToView;
+
+  /// Bound by this route's editor to report unsaved edits. A view never
+  /// binds it, so it is never dirty.
   final EditorGuard guard = EditorGuard();
 }
 
@@ -51,15 +67,20 @@ String planEyebrow(AppLocalizations l, int? dayCount) =>
 ///
 /// Body routing via [_editor]:
 ///   - null              → list level: shows SplitTab or LibraryTab
-///   - kind=='day'       → DayEditor
+///   - kind=='day', view → DayView (a day card's tap)
+///   - kind=='day', edit → DayEditor
 ///   - kind=='exercise'  → ExerciseEditor
 ///
 /// [_activeTab] tracks 'split' | 'exercises' while at the list level.
 class PlanScreen extends StatefulWidget {
-  const PlanScreen({super.key, this.onEditorChanged});
+  const PlanScreen({super.key, this.onEditorChanged, this.onStartDay});
 
-  /// Lets the shell pause decorative work behind fully opaque editors.
+  /// Lets the shell pause decorative work behind fully opaque editors and
+  /// day views.
   final ValueChanged<bool>? onEditorChanged;
+
+  /// Starts (or resumes) a workout from a day's view; null hides Start.
+  final ValueChanged<DayTemplate>? onStartDay;
 
   @override
   State<PlanScreen> createState() => PlanScreenState();
@@ -98,33 +119,75 @@ class PlanScreenState extends State<PlanScreen> {
     super.dispose();
   }
 
-  /// True while [requestClose] runs: a second call is refused rather than
-  /// stacking a second prompt.
+  /// True while [requestClose] or [_stepBack] runs: a second call is
+  /// refused rather than stacking a second prompt.
   bool _closing = false;
 
-  /// Opens an editor. Ignored while one is open: the list can then only be
-  /// reached by a tap that fell through to the outgoing list while the new
-  /// editor was still loading.
-  void _openEditor(String kind, String? id) {
+  /// Opens an editor, or a day's read-only view when [editing] is false.
+  /// Ignored while one is open: the list can then only be reached by a tap
+  /// that fell through to the outgoing list while the new page was still
+  /// loading.
+  void _openEditor(String kind, String? id, {bool editing = true}) {
     if (_editor != null) return;
-    setState(() => _editor = _EditorRoute(kind: kind, id: id));
+    setState(
+      () => _editor = _EditorRoute(kind: kind, id: id, editing: editing),
+    );
     widget.onEditorChanged?.call(true);
   }
 
-  /// Closes [route]'s editor if it is still the open one, so a late Save or
-  /// Delete never closes an editor opened since.
+  /// The view's Edit: replaces [view] with an editor for the same day, with
+  /// its own new guard, that returns to the view when it is left.
+  void _editFromView(_EditorRoute view) {
+    if (!identical(_editor, view) || view.editing) return;
+    setState(
+      () => _editor = _EditorRoute(
+        kind: view.kind,
+        id: view.id,
+        returnToView: true,
+      ),
+    );
+  }
+
+  /// Closes [route] if it is still the open one, so a late Save or Delete
+  /// never closes a page opened since.
   void _closeEditor(_EditorRoute route) {
     if (!identical(_editor, route)) return;
     setState(() => _editor = null);
     widget.onEditorChanged?.call(false);
   }
 
+  /// Leaves [route] one level: an editor opened from a view shows that view
+  /// again (a fresh route), anything else closes to the list. A deleted
+  /// day's view then closes itself through [DayView.onClose].
+  void _stepOut(_EditorRoute route) {
+    if (!identical(_editor, route)) return;
+    if (route.editing && route.returnToView) {
+      setState(
+        () => _editor = _EditorRoute(
+          kind: route.kind,
+          id: route.id,
+          editing: false,
+        ),
+      );
+    } else {
+      _closeEditor(route);
+    }
+  }
+
   /// Whether the open editor would lose edits if closed now.
   bool get hasUnsavedEdits => _editor?.guard.isDirty() ?? false;
 
-  /// Closes the open editor, asking first if it holds unsaved edits.
-  /// Returns true if the editor closed.
-  Future<bool> requestClose() async {
+  /// Closes everything open, back to the list, asking first if an editor
+  /// holds unsaved edits. Returns true if it closed.
+  Future<bool> requestClose() => _leave(_closeEditor);
+
+  /// Back from the header or the system: a view closes with no prompt; an
+  /// editor asks as [requestClose] does, then returns to its view or the
+  /// list. Returns true if it left.
+  Future<bool> _stepBack() => _leave(_stepOut);
+
+  /// Runs [leave] on the open route once any unsaved edits are discarded.
+  Future<bool> _leave(void Function(_EditorRoute) leave) async {
     final route = _editor;
     if (route == null || _closing) return false;
     _closing = true;
@@ -149,20 +212,20 @@ class PlanScreenState extends State<PlanScreen> {
           return false;
         }
       }
-      _closeEditor(route);
+      leave(route);
       return true;
     } finally {
       _closing = false;
     }
   }
 
-  /// Consumes a back press when the in-tab editor is open. Returns true if
-  /// handled; the editor then closes, or asks first, on its own.
+  /// Consumes a back press when an in-tab page is open. Returns true if
+  /// handled; the page then steps back, or asks first, on its own.
   bool handleBack() {
     if (_editor == null) {
       return _activeTab == 'exercises' && _catalogBrowser.handleBack();
     }
-    unawaited(requestClose());
+    unawaited(_stepBack());
     return true;
   }
 
@@ -171,6 +234,8 @@ class PlanScreenState extends State<PlanScreen> {
   String _titleOf(AppLocalizations l) {
     if (_editor == null) return l.planTitle;
     if (_editor!.kind == 'day') {
+      // The view names the day itself; its header names where Back goes.
+      if (!_editor!.editing) return l.planTabSplit;
       return _editor!.id != null ? l.planEditDay : l.planNewDay;
     }
     return _editor!.id != null ? l.planEditExercise : l.planNewExercise;
@@ -198,7 +263,7 @@ class PlanScreenState extends State<PlanScreen> {
                     children: [
                       _BackButton(
                         tokens: tokens,
-                        onBack: () => unawaited(requestClose()),
+                        onBack: () => unawaited(_stepBack()),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -258,10 +323,17 @@ class PlanScreenState extends State<PlanScreen> {
     final Widget body;
     final editor = _editor;
     if (editor != null) {
-      if (editor.kind == 'day') {
+      if (editor.kind == 'day' && !editor.editing) {
+        body = DayView(
+          id: editor.id!,
+          onEdit: () => _editFromView(editor),
+          onClose: () => _closeEditor(editor),
+          onStart: widget.onStartDay,
+        );
+      } else if (editor.kind == 'day') {
         body = DayEditor(
           id: editor.id,
-          onBack: () => _closeEditor(editor),
+          onBack: () => _stepOut(editor),
           guard: editor.guard,
         );
       } else {
@@ -273,7 +345,8 @@ class PlanScreenState extends State<PlanScreen> {
       }
     } else if (_activeTab == 'split') {
       body = SplitTab(
-        onOpenEditor: (id) => _openEditor('day', id),
+        onOpenDay: (id) => _openEditor('day', id, editing: false),
+        onEditDay: (id) => _openEditor('day', id),
         statusActions: _dayStatusActions,
       );
     } else if (_activeTab == 'targets') {
@@ -303,7 +376,8 @@ class PlanScreenState extends State<PlanScreen> {
         key: ValueKey(
           _editor == null
               ? 'list-$_activeTab'
-              : 'editor-${_editor!.kind}-${_editor!.id}',
+              : 'editor-${_editor!.kind}-${_editor!.id}-'
+                    '${_editor!.editing ? 'edit' : 'view'}',
         ),
         child: body,
       ),

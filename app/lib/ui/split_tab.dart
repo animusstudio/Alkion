@@ -1,9 +1,16 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/material.dart';
 
+import '../catalog/catalog.dart';
+import '../catalog_ui/catalog_scope.dart';
+import '../data/body_workload.dart';
 import '../data/day_template_repository.dart';
 import '../data/exercise_repository.dart';
 import '../data/models.dart';
+import '../data/planned_workload.dart';
 import '../l10n/app_localizations.dart';
 import '../store/local_store.dart';
 import '../theme/app_theme.dart';
@@ -17,6 +24,7 @@ import '../widgets/prescription_controls.dart';
 import '../widgets/w_action_sheet.dart';
 import '../widgets/w_dialog.dart';
 import '../widgets/w_toast.dart';
+import 'split_volume_card.dart';
 
 /// The Plan route owns immutable status intents independently of the list's
 /// lifetime, so opening an editor or another sub-tab cannot discard a retry.
@@ -76,12 +84,21 @@ class DayStatusActions extends ChangeNotifier {
 
 /// The Split sub-tab: a list of training days in rotation.
 ///
-/// [onOpenEditor] is called with the day id to edit (null = new day).
+/// A card's tap calls [onOpenDay]; the card menu's Edit and "New training
+/// day" call [onEditDay].
 class SplitTab extends StatefulWidget {
-  const SplitTab({super.key, required this.onOpenEditor, this.statusActions});
+  const SplitTab({
+    super.key,
+    required this.onOpenDay,
+    required this.onEditDay,
+    this.statusActions,
+  });
+
+  /// Called with the id of the day to view.
+  final ValueChanged<String> onOpenDay;
 
   /// Called with the day id to edit (null = new day).
-  final void Function(String? id) onOpenEditor;
+  final void Function(String? id) onEditDay;
 
   final DayStatusActions? statusActions;
 
@@ -90,24 +107,181 @@ class SplitTab extends StatefulWidget {
 }
 
 class _SplitTabState extends State<SplitTab> {
-  late final DayTemplateRepository _repo = DayTemplateRepository.local(
-    context.read<LocalDatabase>(),
-  );
+  late final LocalDatabase _db = context.read<LocalDatabase>();
+  late final DayTemplateRepository _repo = DayTemplateRepository.local(_db);
   late final Stream<List<DayTemplate>> _daysStream = _repo.watchDays();
+  StreamSubscription<List<DayTemplate>>? _daysSub;
+
+  /// The days as last emitted; empty until the first emission or after a
+  /// failed read, as the list always showed them.
+  List<DayTemplate> _days = const [];
 
   bool _showInactive = false;
   late final DayStatusActions _statusActions;
+
+  // ── Split volume inputs ──
+  // Read once per distinct day-and-slot revision signature of the active
+  // days, never from build. A newer read (or dispose) bumps [_epoch] and so
+  // drops an older read's result.
+  PlanWorkloadInputs? _inputs;
+  bool _inputsFailed = false;
+  bool _loading = false;
+  int _epoch = 0;
+  List<Object?>? _signature;
+  CatalogBundle? _bundle;
+  bool _bundleKnown = false;
+
+  /// The last computed workload, reused while neither the days nor the
+  /// inputs change.
+  ({List<DayTemplate> days, PlanWorkloadInputs inputs, WorkoutWorkload value})?
+  _computed;
+
+  /// A token change while reading re-runs the read at most this often before
+  /// the card gives up and shows the unavailable line.
+  static const _maxRetries = 3;
 
   @override
   void initState() {
     super.initState();
     _statusActions = widget.statusActions ?? DayStatusActions(_repo);
+    _daysSub = _daysStream.listen(_onDays, onError: _onDaysError);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final bundle = CatalogScope.maybeOf(context)?.bundle;
+    if (_bundleKnown && identical(bundle, _bundle)) return;
+    final first = !_bundleKnown;
+    _bundleKnown = true;
+    _bundle = bundle;
+    // A new catalog bundle can change catalog-backed muscle profiles.
+    if (!first) {
+      _signature = null;
+      _ensureInputs();
+    }
   }
 
   @override
   void dispose() {
+    _epoch++;
+    _daysSub?.cancel();
     if (widget.statusActions == null) _statusActions.dispose();
     super.dispose();
+  }
+
+  void _onDays(List<DayTemplate> days) {
+    if (!mounted) return;
+    setState(() => _days = days);
+    _ensureInputs();
+  }
+
+  void _onDaysError(Object error, StackTrace stack) {
+    if (!mounted) return;
+    setState(() => _days = const []);
+  }
+
+  static List<DayTemplate> _activeDays(List<DayTemplate> days) => [
+    for (final day in days)
+      if (day.isActive) day,
+  ];
+
+  /// Whether the overview shows: some active day holds an exercise.
+  static bool _hasVolume(List<DayTemplate> days) =>
+      days.any((day) => day.isActive && day.slots.isNotEmpty);
+
+  /// What the inputs depend on: each active day's id and revision and each
+  /// of its slots' id, revision, exercise and catalog selection.
+  static List<Object?> _signatureOf(List<DayTemplate> active) => [
+    for (final day in active) ...[
+      day.id,
+      day.localRevision,
+      day.slots.length,
+      for (final slot in day.slots) ...[
+        slot.id,
+        slot.localRevision,
+        slot.exerciseId,
+        slot.catalog?.muscleResolutionKey,
+      ],
+    ],
+  ];
+
+  /// Starts a read when the active days' signature changed since the last.
+  void _ensureInputs() {
+    if (!_hasVolume(_days)) return;
+    final active = _activeDays(_days);
+    final signature = _signatureOf(active);
+    if (_signature != null && listEquals(signature, _signature)) return;
+    _signature = signature;
+    unawaited(_load(active));
+  }
+
+  /// Reads the exercises and muscle resolutions for [active]. A read that
+  /// fails because the store token changed is re-run; any other failure is
+  /// unavailable. A newer read (or dispose) drops this one's result.
+  Future<void> _load(List<DayTemplate> active) async {
+    final epoch = ++_epoch;
+    final bundle = _bundle;
+    _loading = true;
+    for (var attempt = 0; ; attempt++) {
+      final token = _db.token;
+      try {
+        final inputs = await PlanWorkloadInputs.load(_db, active, bundle);
+        if (!mounted || epoch != _epoch) return;
+        setState(() {
+          _inputs = inputs;
+          _inputsFailed = false;
+          _loading = false;
+        });
+        return;
+      } catch (_) {
+        if (!mounted || epoch != _epoch) return;
+        final now = _db.token;
+        final tokenChanged =
+            now.profileId != token.profileId ||
+            now.generation != token.generation;
+        if (tokenChanged && attempt + 1 < _maxRetries) continue;
+        setState(() {
+          _inputsFailed = true;
+          _loading = false;
+        });
+        return;
+      }
+    }
+  }
+
+  /// Whether [inputs] already hold every exercise and selection the active
+  /// [days] use, so a re-read keeps showing counts instead of flashing.
+  static bool _covers(PlanWorkloadInputs inputs, List<DayTemplate> days) =>
+      days.every(
+        (day) =>
+            !day.isActive ||
+            day.slots.every(
+              (slot) =>
+                  inputs.exercisesById.containsKey(slot.exerciseId) &&
+                  (slot.catalog == null ||
+                      inputs.resolutions.containsKey(
+                        slot.catalog!.muscleResolutionKey,
+                      )),
+            ),
+      );
+
+  WorkoutWorkload _workload() {
+    const mode = WorkoutWorkloadMode.planned;
+    if (_inputsFailed) return WorkoutWorkload.unavailable(mode);
+    final inputs = _inputs;
+    if (inputs == null || (_loading && !_covers(inputs, _days))) {
+      return WorkoutWorkload.loading(mode);
+    }
+    final cached = _computed;
+    if (cached != null &&
+        identical(cached.days, _days) &&
+        identical(cached.inputs, inputs)) {
+      return cached.value;
+    }
+    final value = inputs.splitWorkload(_days);
+    _computed = (days: _days, inputs: inputs, value: value);
+    return value;
   }
 
   Future<void> _setActive(DayTemplate day) async {
@@ -158,7 +332,7 @@ class _SplitTabState extends State<SplitTab> {
       ],
     );
     if (!mounted) return;
-    if (action == 'edit') widget.onOpenEditor(day.id);
+    if (action == 'edit') widget.onEditDay(day.id);
     if (action == 'active') await _setActive(day);
   }
 
@@ -167,7 +341,7 @@ class _SplitTabState extends State<SplitTab> {
     name: day.name,
     focus: day.focus,
     exerciseCount: day.slots.length,
-    onTap: () => widget.onOpenEditor(day.id),
+    onTap: () => widget.onOpenDay(day.id),
     onActions: () => _actions(day),
     status: _statusActions.isBusy(day.id)
         ? AppLocalizations.of(context).trainingSaving
@@ -182,63 +356,61 @@ class _SplitTabState extends State<SplitTab> {
 
     return AnimatedBuilder(
       animation: _statusActions,
-      builder: (context, _) => StreamBuilder<List<DayTemplate>>(
-        stream: _daysStream,
-        builder: (context, snap) {
-          final days = snap.data ?? [];
+      builder: (context, _) {
+        final days = _days;
 
-          return ListView(
-            padding: EdgeInsets.fromLTRB(16, 8, 16, bottomNavInset(context)),
-            children: [
-              ...days.where((d) => d.isActive).map(_card),
-              if (days.any((d) => d.active == false)) ...[
-                TrainingDisclosure(
-                  label: AppLocalizations.of(context).trainingInactive(
-                    days.where((d) => d.active == false).length,
-                  ),
-                  expanded: _showInactive || !days.any((d) => d.isActive),
-                  onTap: () => setState(() => _showInactive = !_showInactive),
-                ),
-                if (_showInactive || !days.any((d) => d.isActive))
-                  ...days
-                      .where((d) => d.active == false)
-                      .map(
-                        (day) => Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _card(day),
-                            TrainingAction(
-                              _statusActions.hasPending(day.id)
-                                  ? AppLocalizations.of(context).trainingRetry
-                                  : AppLocalizations.of(context).trainingEnable,
-                              onTap: _statusActions.isBusy(day.id)
-                                  ? null
-                                  : () => _setActive(day),
-                              icon: AlkionGlyph.refresh,
-                            ),
-                          ],
-                        ),
-                      ),
-              ],
-              if (days.any((d) => d.active == null)) ...[
-                Text(
-                  AppLocalizations.of(context).trainingDayUnavailable,
-                  style: WorkoutType.body(color: tokens.dim),
-                ),
-                ...days.where((d) => d.active == null).map(_card),
-              ],
-
-              if (days.isNotEmpty) const SizedBox(height: 16),
-
-              // "New training day" dashed button
-              _NewDayButton(
-                tokens: tokens,
-                onTap: () => widget.onOpenEditor(null),
-              ),
+        return ListView(
+          padding: EdgeInsets.fromLTRB(16, 8, 16, bottomNavInset(context)),
+          children: [
+            if (_hasVolume(days)) ...[
+              SplitVolumeCard(workload: _workload(), basis: splitBasis(days)),
+              const SizedBox(height: 16),
             ],
-          );
-        },
-      ),
+            ...days.where((d) => d.isActive).map(_card),
+            if (days.any((d) => d.active == false)) ...[
+              TrainingDisclosure(
+                label: AppLocalizations.of(
+                  context,
+                ).trainingInactive(days.where((d) => d.active == false).length),
+                expanded: _showInactive || !days.any((d) => d.isActive),
+                onTap: () => setState(() => _showInactive = !_showInactive),
+              ),
+              if (_showInactive || !days.any((d) => d.isActive))
+                ...days
+                    .where((d) => d.active == false)
+                    .map(
+                      (day) => Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _card(day),
+                          TrainingAction(
+                            _statusActions.hasPending(day.id)
+                                ? AppLocalizations.of(context).trainingRetry
+                                : AppLocalizations.of(context).trainingEnable,
+                            onTap: _statusActions.isBusy(day.id)
+                                ? null
+                                : () => _setActive(day),
+                            icon: AlkionGlyph.refresh,
+                          ),
+                        ],
+                      ),
+                    ),
+            ],
+            if (days.any((d) => d.active == null)) ...[
+              Text(
+                AppLocalizations.of(context).trainingDayUnavailable,
+                style: WorkoutType.body(color: tokens.dim),
+              ),
+              ...days.where((d) => d.active == null).map(_card),
+            ],
+
+            if (days.isNotEmpty) const SizedBox(height: 16),
+
+            // "New training day" dashed button
+            _NewDayButton(tokens: tokens, onTap: () => widget.onEditDay(null)),
+          ],
+        );
+      },
     );
   }
 }

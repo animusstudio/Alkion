@@ -11,6 +11,7 @@ import 'package:alkion/domain/evidence.dart';
 import 'package:alkion/data/exercise_repository.dart';
 import 'package:alkion/data/day_template_repository.dart';
 import 'package:alkion/ui/day_editor.dart';
+import 'package:alkion/ui/day_slot_card.dart';
 import 'package:alkion/ui/exercise_editor.dart';
 import 'package:alkion/ui/editor_guard.dart';
 import 'package:alkion/widgets/plan_form.dart';
@@ -207,6 +208,11 @@ Future<void> tapVisible(
   await tester.pump();
 }
 
+/// Lets the focused field's show-caret scroll finish: the scrollable ignores
+/// pointers while it runs, and the day editor is taller than the phone.
+Future<void> settleCaretScroll(WidgetTester tester) =>
+    tester.pump(const Duration(milliseconds: 300));
+
 Future<Map<String, Object?>> inventory(
   WidgetTester tester,
   ScreenHarness harness,
@@ -275,6 +281,7 @@ void main() {
           final save = find.text(day ? 'Save changes' : 'Save exercise');
           final retry = find.text('Retry save');
           await scrollIntoView(tester, editor, save);
+          await settleCaretScroll(tester);
           expect(
             tester.testTextInput.hasAnyClients,
             isTrue,
@@ -330,16 +337,23 @@ void main() {
           );
           await tester.pump();
           expect(tester.widget<TextField>(name).controller!.text, 'Requested');
-          final chip = day ? find.text('Change weekday') : find.text('Back');
+          final chip = day ? find.text('Tue') : find.text('Back');
           await tapVisible(tester, editor, chip, blocked: true);
           if (day) {
-            expect(find.text('Mon'), findsOneWidget);
+            expect(
+              tester
+                  .widget<ChipSelect<int>>(
+                    find.byKey(const Key('day-editor-weekday')),
+                  )
+                  .selected,
+              0,
+            );
             expect(find.byType(BottomSheet), findsNothing);
             final rows = tester
-                .widgetList<DaySlotRow>(find.byType(DaySlotRow))
+                .widgetList<DaySlotCard>(find.byType(DaySlotCard))
                 .toList();
-            expect(rows.map((r) => r.slot.exerciseId), ['ex', 'other']);
-            expect(rows.every((r) => r.readOnly), isTrue);
+            expect(rows.map((r) => r.draft.exerciseId), ['ex', 'other']);
+            expect(rows.every((r) => !r.enabled), isTrue);
             // A stale callback from an already-running drag cannot change order.
             tester
                 .widget<ReorderableListView>(find.byType(ReorderableListView))
@@ -349,8 +363,8 @@ void main() {
             await tester.pump();
             expect(
               tester
-                  .widgetList<DaySlotRow>(find.byType(DaySlotRow))
-                  .map((r) => r.slot.exerciseId),
+                  .widgetList<DaySlotCard>(find.byType(DaySlotCard))
+                  .map((r) => r.draft.exerciseId),
               ['ex', 'other'],
             );
             await tapVisible(tester, editor, find.text('Bench'), blocked: true);
@@ -502,11 +516,11 @@ void main() {
         final name = input(day ? 'Day name' : 'Exercise name');
         await settleUntilFound(tester, name, where: 'discard editor');
         await tester.enterText(name, 'Requested');
-        await tapVisible(
-          tester,
-          editor,
-          find.text(day ? 'Save changes' : 'Save exercise'),
-        );
+        final save = find.text(day ? 'Save changes' : 'Save exercise');
+        await scrollIntoView(tester, editor, save);
+        await settleCaretScroll(tester);
+        await tester.tap(save);
+        await tester.pump();
         await observeDialog(tester, harness.database);
         await until(
           tester,

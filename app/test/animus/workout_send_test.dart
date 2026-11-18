@@ -186,6 +186,9 @@ class _RecoveryApi extends _CapturedApi {
   String? readGeneration;
   bool duplicateProfile = false;
   int? recoveryErrorAt;
+  // A refusal whose body is not a JSON representation (proxy page, sniffed type).
+  int? malformedDenyAt;
+  String malformedType = 'text/plain; charset=utf-8';
   final requestHeaders = <Map<String, String>>[];
   @override
   AnimusHttpResponse _response(List<int> body, {int status = 200}) =>
@@ -263,6 +266,18 @@ class _RecoveryApi extends _CapturedApi {
     required Duration timeout,
   }) async {
     requestHeaders.add(Map.of(headers));
+    if (malformedDenyAt == posts.length + 1) {
+      posts.add(List<int>.from(body));
+      return AnimusHttpResponse(
+        statusCode: 403,
+        headers: {'content-type': malformedType},
+        body: utf8.encode(
+          malformedType.startsWith('text/html')
+              ? '<html><body>403 Forbidden</body></html>'
+              : '{"error":"forbidden"}',
+        ),
+      );
+    }
     final response = await super.post(
       uri: uri,
       headers: headers,
@@ -527,6 +542,12 @@ final class _Auth implements AnimusAuthPort {
 
   @override
   Future<void> retain(AnimusAuthSession session) async {}
+  @override
+  Future<bool> signOut() async {
+    await disconnect();
+    return true;
+  }
+
   @override
   Future<void> disconnect() async {}
   @override
@@ -1816,6 +1837,64 @@ void main() {
         );
       },
     );
+    for (final type in ['text/plain; charset=utf-8', 'text/html']) {
+      test(
+        'malformed $type 403 on an action settles uncertain without a fence, then the same attempt retries',
+        () async {
+          final selected = await sender.select(session);
+          peer
+            ..malformedDenyAt = 1
+            ..malformedType = type;
+          await sender.send(selected);
+          expect(peer.posts.length, 1);
+          expect(peer.committed, isEmpty);
+          final summary = await sender.selectionFor(session);
+          expect(summary?.status, AnimusWorkoutSendStatus.uncertain);
+          expect(summary?.issue, AnimusWorkoutSendIssue.invalidResponse);
+          final outcomes = await store.getAll(
+            'SELECT outcome_bytes FROM attempt_outcomes',
+          );
+          final kinds = outcomes
+              .map(
+                (o) =>
+                    (jsonDecode(
+                          utf8.decode((o['outcome_bytes'] as List).cast<int>()),
+                        )
+                        as Map)['kind'],
+              )
+              .toList();
+          expect(kinds, ['uncertain']);
+          expect(
+            await store.getAll('SELECT * FROM animus_recovery_archives'),
+            isEmpty,
+          );
+          expect(
+            (await store.get(
+              "SELECT state FROM animus_remote_attachments",
+            ))['state'],
+            'ready',
+          );
+          expect(
+            (await store.get(
+              "SELECT count(*) AS n FROM animus_exchange_intents WHERE state<>'settled'",
+            ))['n'],
+            0,
+          );
+          final denied = await store.get(
+            'SELECT * FROM animus_response_evidence WHERE http_status=403',
+          );
+          expect(denied['response_generation'], isNull);
+          final exact = List<int>.from(peer.posts.single);
+          peer.malformedDenyAt = null;
+          await sender.send(selected);
+          expect(peer.posts[1], exact);
+          expect(
+            (await sender.selectionFor(session))?.status,
+            AnimusWorkoutSendStatus.sent,
+          );
+        },
+      );
+    }
     test(
       'revoked write grant stops after one denied action without disclosing a response generation',
       () async {

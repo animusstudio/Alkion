@@ -2,7 +2,10 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:alkion/main.dart';
+import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/session/active_session_screen.dart';
+import 'package:alkion/session/log_set_bar.dart';
+import 'package:alkion/session/session_header.dart';
 import 'package:alkion/shell/app_shell.dart';
 import 'package:alkion/shell/session_launcher.dart';
 import 'package:flutter/material.dart';
@@ -141,6 +144,37 @@ void main() {
             expect(
               tester.getSize(find.byKey(const Key('log-set-bar'))).height,
               greaterThanOrEqualTo(48),
+            );
+            // The bar names only the set, and Next names the set and its
+            // values without repeating an exercise that is under way.
+            final live = runtime!.sessions.active!;
+            final l = AppLocalizations.of(
+              tester.element(find.byType(ActiveSessionScreen)),
+            );
+            final next = live.nextPendingSet!;
+            final barLabel = LogSetBar.labelFor(
+              l,
+              runtime!.units,
+              live.liveSet,
+              live.canFinish,
+            )!;
+            expect(barLabel, isNot(contains('×')));
+            expect(
+              tester.getSemantics(find.byKey(const Key('log-set-bar'))).label,
+              barLabel,
+            );
+            final header = tester.widget<SessionHeader>(
+              find.byType(SessionHeader),
+            );
+            expect(
+              header.nextLabel,
+              restNextLabel(l, runtime!.units, next),
+              reason: where,
+            );
+            expect(
+              header.nextLabel.contains(next.block.exercise.name),
+              !next.block.allSets.any((set) => set.done),
+              reason: where,
             );
             await act(
               tester,

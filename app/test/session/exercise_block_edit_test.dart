@@ -3,6 +3,7 @@ import 'dart:ui' show SemanticsAction;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/data/models.dart';
+import 'package:alkion/domain/catalog_execution.dart';
 import 'package:alkion/session/active_session_controller.dart';
 import 'package:alkion/session/exercise_block.dart';
 import 'package:alkion/session/live_set_card.dart';
@@ -10,7 +11,9 @@ import 'package:alkion/session/set_line.dart';
 import 'package:alkion/units/unit_service.dart';
 import 'package:alkion/widgets/pr_badge.dart';
 
+import '../support/app_fonts.dart';
 import '../support/l10n_harness.dart';
+import '../support/layout_expect.dart';
 
 BlockState _block({bool firstDone = false, bool expanded = true}) {
   const exercise = Exercise(
@@ -56,7 +59,65 @@ BlockState _block({bool firstDone = false, bool expanded = true}) {
   );
 }
 
+CatalogSetEvidence _typed(String context, {bool logged = false}) =>
+    CatalogSetEvidence(
+      selection: CatalogSelectionEvidence(
+        exerciseId: 'synthetic-exercise',
+        contextId: 'synthetic-$context',
+        contextRevision: 1,
+        displayLabel: 'Synthetic press',
+        contextLabel: context,
+        profile: CatalogMeasurementProfileEvidence.forKey('load_reps'),
+      ),
+      metrics: logged
+          ? {
+              'reported_load': CatalogMetricEvidence.fromInput(
+                '18',
+                metric: 'reported_load',
+                unit: 'kg',
+              ),
+              'repetitions': CatalogMetricEvidence.fromInput(
+                '12',
+                metric: 'repetitions',
+                unit: 'count',
+              ),
+            }
+          : const {},
+    );
+
+/// A typed block: s1 logged on the header's Machine A, s2 logged on Machine B,
+/// s3 live on Machine A; authored rep range 8–12.
+BlockState _typedBlock() {
+  final b = _block();
+  final typed = BlockState(
+    exercise: b.exercise,
+    resolved: b.resolved,
+    catalogSelection: _typed('Machine A').selection,
+    targetRepRange: (low: 8, high: 12),
+    warmupSets: [],
+    workingSets: [
+      for (final (id, context, done) in [
+        ('s1', 'Machine A', true),
+        ('s2', 'Machine B', true),
+        ('s3', 'Machine A', false),
+      ])
+        SetState(
+          id: id,
+          weightKg: 0,
+          reps: 0,
+          rir: 2,
+          isWarmup: false,
+          done: done,
+        )..catalog = _typed(context, logged: done),
+    ],
+    expanded: true,
+  );
+  return typed;
+}
+
 void main() {
+  setUpAll(preloadAppFonts);
+
   late List<String> removed;
   late List<String> focused;
   late int menus;
@@ -333,4 +394,154 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
+
+  // The screen's builder: empty when the set matches the block header.
+  String selectionLabel(SetState s) =>
+      s.catalog!.selection.contextLabel == 'Machine A'
+      ? ''
+      : s.catalog!.selection.contextLabel;
+
+  Widget typedHost(
+    BlockState b, {
+    Widget? Function(SetState)? reference,
+    List<int?>? rirs,
+    String? prompt,
+    bool showRepRange = true,
+  }) => SingleChildScrollView(
+    child: ExerciseBlock(
+      block: b,
+      unit: UnitService(),
+      liveSetId: 's3',
+      rirPromptSetId: prompt,
+      showRepRange: showRepRange,
+      onFocusSet: (_, __) {},
+      onSetChanged: (_, __) {},
+      onRir: (_, __, v) => rirs?.add(v),
+      onMarkNotDone: (_, __) {},
+      onRemoveSet: (_, __) {},
+      onMenu: (_) {},
+      valuesEditorBuilder: (_) => const SizedBox(height: 40),
+      referenceBuilder: reference,
+      selectionLabel: selectionLabel,
+    ),
+  );
+
+  testWidgets('typed lines never repeat the exercise; another setup shows '
+      'once', (tester) async {
+    await tester.pumpWidget(wrapL10n(typedHost(_typedBlock())));
+    await tester.pumpAndSettle();
+    // The header names the exercise once; no line repeats it.
+    expect(find.text('Synthetic press'), findsOneWidget);
+    final lines = tester.widgetList<SetLine>(find.byType(SetLine)).toList();
+    expect([for (final l in lines) l.variantLabel], ['', 'Machine B']);
+    expect(
+      find.descendant(
+        of: find.byType(SetLine),
+        matching: find.text('Machine B'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(SetLine),
+        matching: find.text('18 kg × 12'),
+      ),
+      findsNWidgets(2),
+    );
+    expect(find.textContaining('Load (kg)'), findsNothing);
+  });
+
+  testWidgets('the live card shows the authored rep range as a tag', (
+    tester,
+  ) async {
+    await tester.pumpWidget(wrapL10n(typedHost(_typedBlock())));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byType(LiveSetCard),
+        matching: find.text('8–12'),
+      ),
+      findsOneWidget,
+    );
+    await tester.pumpWidget(
+      wrapL10n(typedHost(_typedBlock(), showRepRange: false)),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('live-rep-range')), findsNothing);
+  });
+
+  testWidgets('an empty reference keeps no gap on the card', (tester) async {
+    await tester.pumpWidget(
+      wrapL10n(typedHost(_typedBlock(), reference: (_) => null)),
+    );
+    await tester.pumpAndSettle();
+    final none = tester.getSize(find.byType(LiveSetCard)).height;
+    expect(
+      tester.widget<LiveSetCard>(find.byType(LiveSetCard)).reference,
+      isNull,
+    );
+    await tester.pumpWidget(
+      wrapL10n(
+        typedHost(_typedBlock(), reference: (_) => const SizedBox.shrink()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<LiveSetCard>(find.byType(LiveSetCard)).reference,
+      isNull,
+    );
+    expect(tester.getSize(find.byType(LiveSetCard)).height, none);
+    await tester.pumpWidget(
+      wrapL10n(
+        typedHost(
+          _typedBlock(),
+          reference: (_) => const Text('last 18 kg × 11 · 3d ago'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('last 18 kg × 11 · 3d ago'), findsOneWidget);
+  });
+
+  testWidgets('the strip clears the RIR through onRir(null)', (tester) async {
+    final rirs = <int?>[];
+    await tester.pumpWidget(
+      wrapL10n(typedHost(_typedBlock(), rirs: rirs, prompt: 's1')),
+    );
+    await tester.pumpAndSettle();
+    final selected = find.descendant(
+      of: find.byType(SetLine).first,
+      matching: find.byKey(const Key('rir-2')),
+    );
+    await tester.ensureVisible(selected);
+    await tester.tap(selected);
+    expect(rirs, [null]);
+    expect(find.text('Clear RIR'), findsNothing);
+  });
+
+  for (final code in ['en', 'de', 'it']) {
+    testWidgets('a typed block fits 320dp / 2.0x ($code)', (tester) async {
+      tester.view.physicalSize = const Size(320, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(
+            size: Size(320, 2400),
+            textScaler: TextScaler.linear(2.0),
+          ),
+          child: wrapL10n(
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: typedHost(_typedBlock(), prompt: 's2'),
+            ),
+            locale: Locale(code),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expectNoSplitWords(tester);
+    });
+  }
 }

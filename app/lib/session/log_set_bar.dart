@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../catalog_ui/catalog_evidence_widgets.dart';
-
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
@@ -40,7 +38,9 @@ class LogSetBar extends StatelessWidget {
   /// Finishes the workout; used when nothing is live.
   final VoidCallback onFinish;
 
-  /// The bar's label, or null when the bar is hidden.
+  /// The bar's label, or null when the bar is hidden: "Log set N",
+  /// "Log warm-up", an "Update …" label for a logged set, or Finish. Classic
+  /// and catalog sets read the same: the values are already on the card.
   static String? labelFor(
     AppLocalizations l,
     UnitService unit,
@@ -53,14 +53,7 @@ class LogSetBar extends StatelessWidget {
     if (s.done) {
       return s.isWarmup ? l.sessionUpdateWarmup : l.sessionUpdateSet(index);
     }
-    if (s.catalog case final evidence?) {
-      final summary = catalogEvidenceSummary(evidence, l);
-      return '${l.catalogLogSet} ${s.isWarmup ? l.sessionLiveWarmup : index} · ${summary.isEmpty ? l.catalogRequired : summary}';
-    }
-    final weight = '${unit.fmtWt(s.weightKg)}${unit.uLabel}';
-    return s.isWarmup
-        ? l.sessionLogWarmup(weight, s.reps)
-        : l.sessionLogSet(index, weight, s.reps);
+    return s.isWarmup ? l.sessionLogWarmup : l.sessionLogSet(index);
   }
 
   void _tap() {

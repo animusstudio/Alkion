@@ -35,6 +35,11 @@ class AuthFixture {
   String authorizationEndpoint = 'https://identity.example.test/authorize';
   String tokenEndpoint = 'https://identity.example.test/token';
   String jwksEndpoint = 'https://identity.example.test/jwks';
+  String? revocationEndpoint = 'https://identity.example.test/revoke';
+  int revocationStatus = 200;
+  String? refusedRevocationHint;
+  final revocations = <Map<String, String>>[];
+  Completer<void>? revocationGate;
   Completer<void>? tokenGate;
   Future<void> initialize() async {
     _keys = await Directory.systemTemp.createTemp('alkion-auth-synthetic-');
@@ -91,6 +96,7 @@ class AuthFixture {
           'token_endpoint_auth_methods_supported': ['none'],
           if (challengeMethods != null)
             'code_challenge_methods_supported': challengeMethods,
+          'revocation_endpoint': ?revocationEndpoint,
         }),
         200,
       );
@@ -101,6 +107,18 @@ class AuthFixture {
           'keys': [_jwk],
         }),
         200,
+      );
+    }
+    if (revocationEndpoint != null &&
+        request.url.toString() == revocationEndpoint) {
+      final fields = request.bodyFields;
+      revocations.add(fields);
+      await revocationGate?.future;
+      return http.Response(
+        '',
+        fields['token_type_hint'] == refusedRevocationHint
+            ? 400
+            : revocationStatus,
       );
     }
     if (request.url.toString() == tokenEndpoint) {
@@ -183,6 +201,7 @@ class FixtureBrowser implements AnimusBrowserPort {
 
   Uri Function(Uri uri, Uri redirect)? callback;
   Completer<Uri?>? gate;
+  Object? failure;
   int launches = 0;
   int cancellations = 0;
   @override
@@ -192,6 +211,7 @@ class FixtureBrowser implements AnimusBrowserPort {
   }) async {
     launches++;
     lastAuthorization = authorizationUri;
+    if (failure != null) throw failure!;
     if (gate != null) return gate!.future;
     return callback?.call(authorizationUri, redirectUri) ??
         redirectUri.replace(
@@ -219,6 +239,8 @@ class MemoryAuthSecrets implements AnimusSecretStore {
   bool unavailable = false;
   bool failWrite = false;
   Completer<void>? writeGate;
+  Completer<void>? readGate;
+  int reads = 0;
   void _check() {
     calls++;
     if (unavailable) throw const AnimusSecretStoreUnavailable();
@@ -229,6 +251,8 @@ class MemoryAuthSecrets implements AnimusSecretStore {
   @override
   Future<String?> read(AnimusScope scope) async {
     _check();
+    reads++;
+    await readGate?.future;
     return values[scope.storageKey];
   }
 

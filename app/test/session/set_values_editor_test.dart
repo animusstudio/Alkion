@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:alkion/session/set_values_editor.dart';
+import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/units/unit_service.dart';
+import 'package:alkion/widgets/fit_label.dart';
 import 'package:alkion/widgets/ruler_picker.dart';
 
 import '../support/l10n_harness.dart';
@@ -120,6 +122,155 @@ void main() {
       },
     );
   }
+
+  Finder guide(int i) => find.byType(SetFieldGuide).at(i);
+  Finder guideUnit(int i) => find.descendant(
+    of: guide(i),
+    matching: find.byKey(const Key('set-field-unit')),
+  );
+
+  testWidgets(
+    'field captions paint no marker or leader and show the unit in the accent',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      for (final unit in [UnitService(), UnitService()..setUnit(Unit.lb)]) {
+        await tester.pumpWidget(host(editor(unit: unit)));
+        expect(find.byType(SetFieldGuide), findsNWidgets(2));
+        final tokens = tester.element(guide(0)).tokens;
+        for (var i = 0; i < 2; i++) {
+          expect(
+            find.descendant(of: guide(i), matching: find.byType(CustomPaint)),
+            findsNothing,
+            reason: 'the caption draws no marker square or dashed leader',
+          );
+          final unitText = tester.widget<Text>(guideUnit(i));
+          expect(unitText.style!.color, tokens.accentText);
+          // The unit sits on the right edge of the inset caption row.
+          expect(
+            tester.getRect(guideUnit(i)).right,
+            moreOrLessEquals(tester.getRect(guide(i)).right),
+          );
+        }
+        expect(tester.widget<Text>(guideUnit(0)).data, unit.uLabel);
+        expect(tester.widget<Text>(guideUnit(1)).data, 'reps');
+        final name = tester.widget<Text>(
+          find.descendant(of: guide(0), matching: find.text('WEIGHT')),
+        );
+        expect(name.style!.color, tokens.dim);
+        expect(name.style!.letterSpacing, closeTo(0.72, 1e-9));
+        expect(find.text('REPS'), findsOneWidget);
+      }
+    },
+  );
+
+  testWidgets('the caption is excluded from semantics; the ruler names it', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    try {
+      await tester.pumpWidget(host(editor()));
+      expect(find.bySemanticsLabel('WEIGHT'), findsNothing);
+      expect(find.bySemanticsLabel('kg'), findsNothing);
+      expect(find.bySemanticsLabel('Weight, kg'), findsOneWidget);
+    } finally {
+      semantics.dispose();
+    }
+  });
+
+  for (final code in ['en', 'de', 'it']) {
+    testWidgets('field captions fit without splitting at 320dp 2x $code', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 800);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await tester.pumpWidget(
+        wrapL10n(SingleChildScrollView(child: editor()), locale: Locale(code)),
+      );
+      expect(tester.takeException(), isNull);
+      for (var i = 0; i < 2; i++) {
+        expectNoSplitWords(tester, within: guide(i), where: '$code caption');
+        final name = find.descendant(
+          of: guide(i),
+          matching: find.byType(FitLabel),
+        );
+        // The name never runs under the unit, and never ellipsizes.
+        expect(
+          tester.getRect(name).right,
+          lessThanOrEqualTo(tester.getRect(guideUnit(i)).left),
+        );
+        expect(tester.renderObject<RenderFitLabel>(name).ellipsized, isFalse);
+      }
+    });
+  }
+
+  testWidgets(
+    'the long German reps caption stays one whole word beside its unit',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 800);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await tester.pumpWidget(
+        wrapL10n(
+          SingleChildScrollView(child: editor()),
+          locale: const Locale('de'),
+        ),
+      );
+      final word = find.text('WIEDERHOLUNGEN');
+      expect(word, findsOneWidget);
+      expect(tester.widget<Text>(guideUnit(1)).data, 'Wdh.');
+      expectOneLine(tester, word);
+      expect(
+        tester
+            .renderObject<RenderFitLabel>(
+              find.ancestor(of: word, matching: find.byType(FitLabel)),
+            )
+            .ellipsized,
+        isFalse,
+      );
+      expectNoSplitWords(tester, within: guide(1), where: 'de reps');
+      expect(
+        tester.getRect(word).right,
+        lessThanOrEqualTo(tester.getRect(guideUnit(1)).left),
+      );
+      expect(
+        tester.getRect(guideUnit(1)).right,
+        lessThanOrEqualTo(320 - 16 + 0.01),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('a hint follows the name when wide and stacks when narrow', (
+    tester,
+  ) async {
+    Widget caption(double width) => wrapL10n(
+      Center(
+        child: SizedBox(
+          width: width,
+          child: const SetFieldGuide(
+            label: 'Weight',
+            unit: 'kg',
+            hint: 'last 60',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpWidget(caption(400));
+    expect(find.text('last 60'), findsNothing, reason: 'inline in the name');
+    expect(find.textContaining('last 60', findRichText: true), findsOneWidget);
+    await tester.pumpWidget(caption(110));
+    expect(find.text('last 60'), findsOneWidget, reason: 'stacked below');
+    expect(
+      tester.getRect(find.text('last 60')).top,
+      greaterThan(tester.getRect(find.text('WEIGHT')).bottom - 0.5),
+    );
+    expect(tester.takeException(), isNull);
+  });
 
   // A coarse drag: each step's worth of distance covered at ~180 dp/s, safely
   // between the 120 dp/s zoom-in threshold and the 300 dp/s fling dead zone,

@@ -7,8 +7,18 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../config.dart';
 
+/// The browser flow reached its bound before a callback. Distinct from a null
+/// result (user cancel); a callback arriving after the bound is discarded.
+final class AnimusBrowserTimedOut implements Exception {
+  const AnimusBrowserTimedOut();
+  @override
+  String toString() => 'Animus sign-in timed out';
+}
+
 /// Raw callback boundary: the SDK's parsed response omits the actual address.
 /// Tests may drive the real SDK exchange by returning a provider-issued code.
+/// [authorize] returns null on cancellation and throws [AnimusBrowserTimedOut]
+/// once [SystemAnimusBrowser.flowTimeout] has elapsed.
 abstract interface class AnimusBrowserPort {
   Future<Uri?> authorize({
     required Uri authorizationUri,
@@ -24,13 +34,14 @@ final class SystemAnimusBrowser implements AnimusBrowserPort {
     required this.platform,
     OidcAndroidHostApi? android,
     Future<bool> Function(Uri)? launch,
-    this.flowTimeout = const Duration(seconds: 120),
-  }) : assert(
-         flowTimeout > Duration.zero &&
-             flowTimeout <= const Duration(seconds: 120),
-       ),
+    this.flowTimeout = maxFlowTimeout,
+  }) : assert(flowTimeout > Duration.zero && flowTimeout <= maxFlowTimeout),
        _android = android ?? OidcAndroidHostApi(),
        _launch = launch;
+
+  /// Matches the provider's 300 s ceremony age bound: a password plus a TOTP
+  /// fetched from another app must fit, and a longer wait could never succeed.
+  static const maxFlowTimeout = Duration(seconds: 300);
 
   final AnimusPlatform platform;
   final OidcAndroidHostApi _android;
@@ -50,6 +61,16 @@ final class SystemAnimusBrowser implements AnimusBrowserPort {
     await cancel();
     final epoch = _epoch;
     if (platform == AnimusPlatform.android) {
+      // The plugin reports its own flow timeout as USER_CANCELLED. Alkion owns
+      // the bound: this timer fires first (the plugin arms its copy only after
+      // opening the tab), and the elapsed check covers a plugin-first race.
+      final elapsed = Stopwatch()..start();
+      var timedOut = false;
+      final timer = Timer(flowTimeout, () {
+        timedOut = true;
+        unawaited(_android.cancel().catchError((Object _) {}));
+      });
+      bool expired() => timedOut || elapsed.elapsed >= flowTimeout;
       try {
         final value = await _android.authorize(
           authorizationUri.toString(),
@@ -57,7 +78,10 @@ final class SystemAnimusBrowser implements AnimusBrowserPort {
           redirectUri.scheme,
           {'flowTimeoutSeconds': flowTimeout.inSeconds},
         );
-        if (_closed || epoch != _epoch || value == null) return null;
+        if (_closed || epoch != _epoch) return null;
+        // A callback after the bound is never exchanged.
+        if (expired()) throw const AnimusBrowserTimedOut();
+        if (value == null) return null;
         if (value.split('?').first != redirectUri.toString()) {
           throw const FormatException('Invalid authentication callback');
         }
@@ -67,8 +91,14 @@ final class SystemAnimusBrowser implements AnimusBrowserPort {
         }
         return callback;
       } on PlatformException catch (error) {
-        if (error.code == OidcNativeErrorCodes.userCancelled) return null;
+        if (error.code == OidcNativeErrorCodes.userCancelled) {
+          if (_closed || epoch != _epoch) return null;
+          if (expired()) throw const AnimusBrowserTimedOut();
+          return null;
+        }
         rethrow;
+      } finally {
+        timer.cancel();
       }
     }
     final result = Completer<Uri?>();
@@ -82,8 +112,12 @@ final class SystemAnimusBrowser implements AnimusBrowserPort {
       return null;
     }
     _server = server;
+    var timedOut = false;
     final timer = Timer(flowTimeout, () {
-      if (!result.isCompleted) result.complete(null);
+      if (!result.isCompleted) {
+        timedOut = true;
+        result.complete(null);
+      }
       unawaited(server.close(force: true));
     });
     final subscription = server.listen(
@@ -130,7 +164,11 @@ final class SystemAnimusBrowser implements AnimusBrowserPort {
                 mode: LaunchMode.externalApplication,
               ));
       if (!launched && !result.isCompleted) result.complete(null);
-      return await result.future;
+      final callback = await result.future;
+      if (timedOut && !_closed && epoch == _epoch) {
+        throw const AnimusBrowserTimedOut();
+      }
+      return callback;
     } finally {
       timer.cancel();
       await server.close(force: true);
