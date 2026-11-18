@@ -310,6 +310,20 @@ void main() {
     expect(controller.issue, isNull);
   });
 
+  test('a late sign-out failure never overrides a newer Connect', () async {
+    await controller.connect();
+    await controller.confirm();
+    auth.signOutGate = Completer<bool>();
+    final signingOut = controller.disconnect();
+    await Future<void>.delayed(Duration.zero);
+    await controller.connect();
+    expect(controller.state, AnimusConnectionState.awaitingConfirmation);
+    auth.signOutGate!.completeError(const AnimusSecretStoreUnavailable());
+    await signingOut;
+    expect(controller.state, AnimusConnectionState.awaitingConfirmation);
+    expect(controller.issue, isNull);
+  });
+
   test('arbitrary exception detail is reduced to a safe enum', () async {
     auth.failure = StateError('private provider response');
     await controller.connect();

@@ -348,7 +348,10 @@ final class AnimusConnectionController extends ChangeNotifier {
         );
       }
     } on Object catch (error) {
-      if (_current(epoch)) {
+      // Same guard: a slow failure must not overwrite a newer Connect.
+      if (_current(epoch) &&
+          _running == null &&
+          _state == AnimusConnectionState.disconnected) {
         _publish(AnimusConnectionState.unavailable, _authIssue(error));
       }
     }
