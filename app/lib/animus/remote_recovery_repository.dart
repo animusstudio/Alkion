@@ -27,6 +27,34 @@ Map<String, dynamic> _decode(Object? value) => Map<String, dynamic>.from(
   jsonDecode(utf8.decode((value as List).cast<int>())) as Map,
 );
 
+const remoteRecoveryErrorCodes = {
+  'recovery_required',
+  'operation_recovery_required',
+  'recovery_unavailable',
+};
+
+/// Retained bytes of one ordinary 401/403 refusal body.
+const refusalEvidenceLimit = 64 * 1024;
+
+/// Released wrong-account evidence stays bounded however often it recurs.
+const releasedAttachmentLimit = 16;
+const releasedExchangeLimit = 64;
+const releasedBodyLimit = 256 * 1024;
+const releasedOverflowId = 'overflow';
+
+/// Fail closed: a recovery error code that any lenient reading of [body] could
+/// see counts, whatever its media type. HTML or plain text carries none.
+bool hasRemoteRecoveryError(List<int> body) {
+  if (body.isEmpty) return false;
+  try {
+    return animusJsonErrorCandidates(
+      utf8.decode(body, allowMalformed: true),
+    ).any(remoteRecoveryErrorCodes.contains);
+  } on FormatException {
+    return true;
+  }
+}
+
 /// The existing nonsecret workout binding, with no arbitrary extra properties.
 /// This is deliberately not an auth/session/header serialization surface.
 final class RemoteRecoveryBinding {
@@ -391,23 +419,28 @@ final class RemoteRecoveryRepository {
 
   /// Denied credentials disclose no scoped G. Legacy requires an explicit
   /// validated required:false descriptor and can never downgrade a known G.
+  /// A 401/403 is an ordinary refusal whatever its body or media type; at most
+  /// [refusalEvidenceLimit] bytes of it are kept. Recovery codes never settle.
   Future<void> settleUnscopedResponse(
     RemoteExchange exchange, {
     required int status,
     required List<int> body,
     bool legacyDevelopment = false,
   }) async {
-    if (body.length > 8 * 1024 * 1024) _deny('invalid_remote_response');
-    final value = body.isEmpty
-        ? null
-        : decodeStrictAnimusJson(utf8.decode(body), maxDepth: 48);
-    if (value is Map &&
-        const {
-          'recovery_required',
-          'operation_recovery_required',
-          'recovery_unavailable',
-        }.contains(value['error'])) {
-      _deny();
+    final refusal = status == 401 || status == 403;
+    final kept = refusal && body.length > refusalEvidenceLimit
+        ? body.sublist(0, refusalEvidenceLimit)
+        : body;
+    if (refusal) {
+      if (hasRemoteRecoveryError(body)) _deny();
+    } else {
+      if (body.length > 8 * 1024 * 1024) _deny('invalid_remote_response');
+      final value = body.isEmpty
+          ? null
+          : decodeStrictAnimusJson(utf8.decode(body), maxDepth: 48);
+      if (value is Map && remoteRecoveryErrorCodes.contains(value['error'])) {
+        _deny();
+      }
     }
     await db.writeTransaction((tx) async {
       final intent = await _exchange(tx, exchange),
@@ -430,7 +463,7 @@ final class RemoteRecoveryRepository {
               null) {
         _deny();
       }
-      await _append(tx, exchange, status, null, body);
+      await _append(tx, exchange, status, null, kept);
       await tx.execute(
         "UPDATE animus_exchange_intents SET state='settled' WHERE profile_id=? AND exchange_id=?",
         [tx.profileId, exchange.id],
