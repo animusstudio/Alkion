@@ -173,6 +173,35 @@ void main() {
       expect(fixture.exchanges, 0);
     });
 
+    group('Disconnect revocation', () {
+      Future<void> retained() async {
+        await auth.retain((await auth.authorize())!);
+      }
+
+      test('revokes at the exact /application/o/revoke/ endpoint', () async {
+        fixture.revocationEndpoint =
+            '${fixture.scope.config.issuer.origin}/application/o/revoke/';
+        await retained();
+        expect(await auth.signOut(), isTrue);
+        expect(fixture.revocations, hasLength(2));
+        expect(fixture.secrets.values, isEmpty);
+      });
+
+      for (final bad in [
+        'http://identity.example.test:9090/application/o/other/',
+        'http://identity.example.test:9090/application/o/revoke/?query=1',
+        'http://other.example.test:9090/application/o/revoke/',
+      ]) {
+        test('refuses a substituted revocation endpoint: $bad', () async {
+          fixture.revocationEndpoint = bad;
+          await retained();
+          expect(await auth.signOut(), isFalse);
+          expect(fixture.revocations, isEmpty);
+          expect(fixture.secrets.values, isEmpty);
+        });
+      }
+    });
+
     test('private HTTP does not skip nonce validation', () async {
       fixture.nonceOverride = 'wrong-nonce';
       await expectLater(auth.authorize(), throwsA(isA<AnimusAuthFailure>()));
