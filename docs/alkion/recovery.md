@@ -72,6 +72,16 @@ decide whether it may execute. Dismissing a local review grants no permission.
 Late replies remain evidence for their original exchange and cannot revive sent
 status or alter the current stage.
 
+A profile keeps one attachment, and only verified access pins it. When another
+account starts discovery, the current attachment is released in the same
+transaction if it is still ready with every intent settled, was never archived,
+staged or adopted, has no 2xx response on a non-discovery path and the profile
+holds no retained remote work. Its distinct exchanges, body digests and bodies
+move, up to fixed caps with the remainder counted, into a deduplicated released
+archive of at most 16 entries plus one overflow counter. Review, adoption and
+capture size never include that archive. Otherwise the new account is refused
+before any API I/O and reported as a changed account.
+
 Restoring an attachment already bound to another local store generation remains
 unsupported and blocked; no automatic rebind is implemented. If a backup predates
 attachment, unknown old send history remains individually blocked even at the

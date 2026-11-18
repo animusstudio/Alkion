@@ -237,8 +237,14 @@ evidence in SQLite; it is not installed as a local exercise or replica.
 
 One `401` may coordinate one refresh and one identical retry. `403` is denied;
 an ordinary current-G `404` means signed in with verification unavailable.
-Recovery errors, a changed G or an unexpected response G fence remote work
-before ordinary error classification. Offline, timeout and `503` remain
+A `401`/`403` has no recovery signal when it has no recovery generation header
+of that name and no recovery error code that a lenient reading of its body could
+see. Such a refusal of discovery or a direct read is ordinary whatever its body
+or media type, and keeps at most 64 KiB as evidence. On an action or status
+query, one without a JSON representation settles without a fence and leaves the
+attempt uncertain and retryable, never rejected. Recovery errors, a duplicate or
+malformed generation header, a changed G or an unexpected response G fence
+remote work before ordinary error classification. Offline, timeout and `503` remain
 unavailable states. Verification sends no pending operations and proves no
 whole-history coverage.
 

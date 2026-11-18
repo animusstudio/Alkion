@@ -121,7 +121,7 @@ Migration 1 is the frozen foundation in `lib/store/schema.dart`. Its SHA-256 is
 `schemaSqlDigest`. `schema_migrations` retains each immutable SQL digest.
 
 `SchemaRegistry(forward: [...])` takes `ForwardMigration(version, statements,
-expectedSchemaDigest)`. IDs must be contiguous, at most 6:
+expectedSchemaDigest)`. IDs must be contiguous, at most 7:
 
 | ID | Owner | Concrete scope |
 | --- | --- | --- |
@@ -131,6 +131,7 @@ expectedSchemaDigest)`. IDs must be contiguous, at most 6:
 | 4 | Flexible prescriptions | `day_template_items.rir_policy TEXT`; `day_templates.is_active INTEGER DEFAULT 1` |
 | 5 | Catalog integration | Catalog bindings, tracking contexts and typed execution evidence |
 | 6 | Animus recovery | Server attachment G, immutable operation O, durable API intents, archives, finite stages and response evidence |
+| 7 | Animus attachment release | Capped, deduplicated released-attachment archive and a transient release lease; the attachment, intent and evidence retain triggers admit only a leased, unverified attachment |
 
 Pass the same registry to `LocalStore.open(..., schema: registry)` on every open.
 Each appended migration supplies a independently verified resulting sqlite_master
@@ -185,7 +186,7 @@ inheritance. Native backup includes the snapshot with all other local state.
 | Catalog | Immutable pins and separate selected-local-state keys. Refresh cannot evict attempts, drafts or prior pins. |
 | Transfer | Artifact-backed nonselected/selected import generations, one selected generation per namespace, immutable import journal and scoped correspondence. Parser/promotion/reconciliation are T5. |
 | Downloaded replicas | Only `replica_rows` and their dataset checkpoint/coverage are replaced together. This never clears authored work, pins, drafts, reviews or attempts. No replica transport is implemented. |
-| Animus remote recovery | Backup-covered attachment/origin records, pre-I/O exchange intents, immutable full-state archives, finite comparison stages and append-only response evidence. Adoption changes only server G and the active stage pointer; it never replaces local authored, catalog or replica rows. |
+| Animus remote recovery | Backup-covered attachment/origin records, pre-I/O exchange intents, immutable full-state archives, finite comparison stages and append-only response evidence. Adoption changes only server G and the active stage pointer; it never replaces local authored, catalog or replica rows. An unverified wrong-account attachment moves into the capped released archive when another account discovers; captures reference that archive instead of copying it. |
 | Restore | Immutable generation journal plus persisted profile fence. T6 adds coherent backup publication, newer-work reconciliation and generation selection without a migration ([backup](backup.md), [recovery](recovery.md)). |
 
 Exact value types preserve decimal TEXT spelling, field missing/null/empty/invalid/
