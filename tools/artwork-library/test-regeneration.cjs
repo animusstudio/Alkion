@@ -101,6 +101,7 @@ const {createHash} = require('node:crypto');
     const maleLatest = await expectedLatest('male');
     const femaleLatest = await expectedLatest('female');
     const expectedCounts = await page.evaluate(() => window.ALKION_ARTWORK_LIBRARY.latest_regeneration.expected_counts);
+    assert.ok(expectedCounts.male > 0 && expectedCounts.female > 0);
     assert.equal(maleLatest.length, expectedCounts.male);
     assert.equal(femaleLatest.length, expectedCounts.female);
     assert.deepEqual(await visibleNumbers(), maleLatest);

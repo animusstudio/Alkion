@@ -46,6 +46,7 @@ const {pathToFileURL} = require('node:url');
     page.on('pageerror', error => errors.push(error.message));
     const localURL = pathToFileURL(path.join(gallery, 'index.html')).href;
     await page.goto(localURL);
+    assert.ok(items.length > 0);
     await page.waitForFunction(count => document.querySelectorAll('.exercise').length === count, items.length);
     assert.equal(await page.locator('.exercise:visible').count(), items.length);
     assert.equal(await page.locator('.exercise img[loading=lazy]').count(), items.length);
