@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:provider/provider.dart';
+import '../settings/settings_service.dart';
 import '../history_mapping/history_mapping_label.dart';
 
 import '../theme/alkion_icon.dart';
@@ -37,30 +39,36 @@ Future<List<CatalogChoice>?> showCatalogPicker(
   CatalogChoice? currentChoice,
   bool setupIntent = false,
   Set<String> inDayChoiceKeys = const {},
-}) => showModalBottomSheet<List<CatalogChoice>>(
-  context: context,
-  isScrollControlled: true,
-  useSafeArea: true,
-  isDismissible: false,
-  enableDrag: false,
-  backgroundColor: context.tokens.surface,
-  barrierColor: context.tokens.overlay,
-  sheetAnimationStyle: Motion.sheet(context),
-  builder: (_) => CatalogPicker(
-    state: state,
-    multiple: multiple,
-    immediateSelection: immediateSelection,
-    familyId: familyId,
-    currentChoice: currentChoice,
-    setupIntent: setupIntent,
-    inDayChoiceKeys: inDayChoiceKeys,
-    ownedExercises: HistoryMappingScope.selectable(
-      context,
-      state.ownedExercises,
-      catalog: state.bundle,
+}) {
+  final settings = context.read<SettingsService?>();
+  return showModalBottomSheet<List<CatalogChoice>>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    isDismissible: false,
+    enableDrag: false,
+    backgroundColor: context.tokens.surface,
+    barrierColor: context.tokens.overlay,
+    sheetAnimationStyle: Motion.sheet(context),
+    builder: (_) => ChangeNotifierProvider<SettingsService?>.value(
+      value: settings,
+      child: CatalogPicker(
+        state: state,
+        multiple: multiple,
+        immediateSelection: immediateSelection,
+        familyId: familyId,
+        currentChoice: currentChoice,
+        setupIntent: setupIntent,
+        inDayChoiceKeys: inDayChoiceKeys,
+        ownedExercises: HistoryMappingScope.selectable(
+          context,
+          state.ownedExercises,
+          catalog: state.bundle,
+        ),
+      ),
     ),
-  ),
-);
+  );
+}
 
 enum _CatalogView { all, recent, favorites, personal }
 
@@ -1041,6 +1049,9 @@ class _CatalogPickerState extends State<CatalogPicker> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context), state = widget.state;
+    final edition = context.watch<SettingsService?>()?.bodyStyle == 'female'
+        ? CatalogArtworkEdition.female
+        : CatalogArtworkEdition.male;
     final index = _results.index, labels = _results.labels;
     final result = _results.result;
     final recent = _results.recent;
@@ -1113,7 +1124,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
         inDay: widget.inDayChoiceKeys.contains(choice.key),
         inspection: widget.embedded,
         subtitle: subtitle,
-        artwork: catalogArtworkForVariant(variant),
+        artwork: catalogArtworkForVariant(variant, edition: edition),
         selected: count > 0,
         count: count,
         favorite: state.favorites.contains(choice.key),
@@ -1152,7 +1163,11 @@ class _CatalogPickerState extends State<CatalogPicker> {
               hit.label,
             ),
             label: hit.label,
-            artwork: catalogArtworkForNavigation(hit.kind, hit.key),
+            artwork: catalogArtworkForNavigation(
+              hit.kind,
+              hit.key,
+              edition: edition,
+            ),
             subtitle: l.catalogMatchingExecutions(
               hit.admittedVariantIds?.length ?? 0,
             ),

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Exercise artwork · Alkion</title>
+  <link rel="stylesheet" href="library.css">
+  <script defer src="data.js"></script>
+  <script defer src="library.js"></script>
+</head>
+<body>
+  <header class="page-header">
+    <a class="brand" href="../../docs/alkion/exercise-media.md">Alkion <span>by Animus</span></a>
+    <h1>Exercise artwork</h1>
+    <p>One permanent number per exercise. Switch editions to compare the same selection.</p>
+  </header>
+  <main>
+    <div class="toolbar">
+      <fieldset class="edition-control">
+        <legend>Artwork edition</legend>
+        <label><input type="radio" name="edition" value="male" checked><span>Male</span></label>
+        <label><input type="radio" name="edition" value="female"><span>Female</span></label>
+      </fieldset>
+      <div class="view-controls">
+        <div class="select-control">
+          <label for="scope">Show</label>
+          <select id="scope" aria-controls="gallery">
+            <option value="all">All images</option>
+            <option value="latest">Latest regenerated</option>
+          </select>
+        </div>
+        <div class="select-control">
+          <label for="order">Order</label>
+          <select id="order" aria-controls="gallery">
+            <option value="number">Exercise number</option>
+            <option value="newest">Newest artwork first</option>
+          </select>
+        </div>
+      </div>
+      <div class="search-control">
+        <label for="search">Find an exercise</label>
+        <input id="search" type="search" placeholder="Number or exercise name" autocomplete="off" spellcheck="false" aria-controls="gallery">
+      </div>
+    </div>
+    <p id="summary" class="summary" role="status" aria-live="polite">Loading artwork library…</p>
+    <div class="regeneration-toolbar" aria-label="Regeneration queue">
+      <p id="regeneration-status" role="status" aria-live="polite">Loading regeneration marks…</p>
+      <button id="regeneration-retry" type="button" hidden>Retry save</button>
+      <button id="regeneration-download" type="button">Download regen JSON</button>
+    </div>
+    <p id="notice" class="notice" hidden></p>
+    <p id="empty" class="empty" hidden>No exercises match this view. Try another name or number, change Show, or <button id="clear" type="button">clear search</button>.</p>
+    <div id="gallery" class="gallery" aria-label="Numbered exercise artwork"></div>
+    <noscript><p class="notice">JavaScript is needed to show this local library. Enable it and reopen this page.</p></noscript>
+  </main>
+  <footer>
+    <p>Local review selections. Flags remain visible and do not certify technique or anatomy.</p>
+    <a href="../../docs/alkion/exercise-media.md">Media, provenance and existing asset notices</a>
+  </footer>
+  <dialog id="inspection" aria-labelledby="inspection-title">
+    <div class="inspection-toolbar">
+      <h2 id="inspection-title"></h2>
+      <button id="close" type="button">Close</button>
+    </div>
+    <div class="inspection-controls">
+      <fieldset class="edition-control">
+        <legend>Artwork edition</legend>
+        <label><input type="radio" name="inspection-edition" value="male" checked><span>Male</span></label>
+        <label><input type="radio" name="inspection-edition" value="female"><span>Female</span></label>
+      </fieldset>
+      <div class="navigation">
+        <button id="previous" type="button">Previous</button>
+        <button id="next" type="button">Next</button>
+      </div>
+    </div>
+    <p id="inspection-status" class="inspection-status"></p>
+    <button id="inspection-regeneration" class="regeneration-button" type="button" aria-pressed="false">Mark for regen</button>
+    <p id="inspection-regeneration-status" class="inspection-status" role="status" aria-live="polite"></p>
+    <button id="inspection-regeneration-retry" type="button" hidden>Retry save</button>
+    <div class="inspection-image"><img id="full-image" width="640" height="640" alt=""><p class="image-loading" aria-hidden="true">Loading image…</p><p id="image-error" role="status" hidden>Image unavailable. Rebuild the library data and check the bundled asset.</p></div>
+    <a id="original" target="_blank" rel="noopener">Open full-size image</a>
+    <details>
+      <summary>Source provenance</summary>
+      <dl id="provenance"></dl>
+      <p>The library number identifies the exercise. The source illustration number identifies this edition’s selected artwork and can change.</p>
+    </details>
+  </dialog>
+</body>
+</html>

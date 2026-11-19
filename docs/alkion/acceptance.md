@@ -22,6 +22,96 @@ the serialization assertions and always releases its gate. The 134 focused
 notification tests pass, with zero analysis issues. No application code changed;
 the next exact-head CI run supplies full-suite qualification.
 
+## New exercises and selectable artwork editions — 2026-11-11
+
+The [approved plan](../plans/2026-11-11-new-exercise-artwork-and-female-selection.md)
+is implemented locally through `95afbecc`. Both editions now cover all 771
+catalog executions. Eleven additions receive 22 independently reviewed,
+strictly extracted recognition images; all 1,520 previous image bytes remain
+unchanged. Permanent numbers append 793–803, preserving all 760 previous
+mappings and the saved regeneration queue. Next permanent number: 804.
+
+The existing Appearance artwork setting now selects male or female exercise
+images throughout picker rows, navigation previews and open details. Changes
+are reactive and retain exercise selection, favorites and recents. Both editions
+are bundled; exact revision/equipment/facet matching remains required, and a
+missing selected-edition image fails closed. This supersedes the earlier
+male-only runtime and unbundled-female scope below. All eleven new canonical
+muscle profiles remain unknown; their artwork uses neutral silver without
+invented target overlays.
+
+Independent code and final artifact reviews PASS. Forty-three focused Flutter
+tests PASS, including hash/decode of all 1,542 bundled images; analysis reports
+zero issues. Two additional exact-identity checks prove non-null resolution for
+all 771 executions and all nine new family previews in both editions.
+Preparation tests (18), library generator tests (10), and final
+771-item deterministic artwork/library checks PASS. Parent `make check` and
+`make smoke` PASS. A read-only desktop browser check shows exactly eleven new
+images per edition with the same numbers, matching served hashes/versioned URLs
+and all 170 saved marks unchanged. Host evidence does not establish Android
+device qualification; no installation, release or public push was performed.
+
+Selected manifest SHA-256: male
+`631933fa16b3c526969f844bf716fb2b1b32f6a34021fee53bc5ab82f2d82e3e`, female
+`7bb2f97cf590bfd2e035fa3aeac44630ee43c736a22175e34e563250e30cc77a`.
+
+## Saved artwork regeneration marks — 2026-11-11
+
+The numbered library now marks/unmarks each edition independently and saves
+stable exercise numbers, variant keys and image snapshots to an explicit local
+JSON queue. Reload, atomic concurrent updates, retries and corrupt-file
+preservation passed disposable server/API (9) and browser checks at `d36e6b5c`.
+Offline file viewing labels browser-only marks and offers JSON download;
+HTTP marking requires the local saving helper. Independent review PASS and
+desktop/narrow visual review ship. No image generation is triggered.
+
+## Updated artwork and stable numbered review library — 2026-11-11
+
+Qualified implementation tree: `1100a62`.
+
+The [approved plan](../plans/2026-11-11-numbered-artwork-library.md) updates
+all 760 current catalog variants in both editions. The append-only registry
+reserves 760 stable numbers in the range 1–792, preserving gaps; male and female
+artwork and later revisions share a variant's number. The next number is 793.
+The import preserves 707 male WebPs byte-for-byte, replaces 53 male images and
+adds 760 female images. Preparation preserves source hashes and extraction
+evidence. The 110 hash-bound source annotations include the wrapped-caption fix;
+four qualified standalone-v2 sources retain their extraction evidence and
+explicit parent roles. Crop-safety checks remain unchanged.
+
+Only four preserved standalone-v2 sources passed supplemental native visual
+review; their source hashes, extraction evidence and parent roles are recorded.
+A separate review of 509 sheets recorded 40 agreed defects, 38 disputed or
+uncertain cases, and eight initially uncertain cases later cleared. These are
+separate categories, and all review flags remain. No pose corrections were
+generated in this import. Technical checks and these reviews do not imply
+blanket visual approval.
+
+The standalone offline review page at
+`tools/artwork-library/index.html` decodes all 1,520 640×640 images,
+with 760 unique IDs. Desktop edition views, narrow female layout and enlarged
+inspection were reviewed; synthetic browser checks passed search, deep links,
+missing-image handling, edition switching and keyboard controls. Independent
+review passed A1–A6 with no findings. The page is a local review tool, not part
+of the ordinary Flutter bundle or an app preference. Ordinary app screens
+continue using male artwork; no edition preference was added. The
+137,457,612-byte male library remains in the ordinary Flutter
+bundle; the 138,809,298-byte female library is outside it.
+
+Manifest SHA-256: male
+`e931581f901bb07a453bcea123acb282ac99a8d82c45df16795a93f7e0017a35`, female
+`bbe1b8320a52ad0fe86f87cfe1ced259c6429baeaa7fa519a35f50dbb3215d98`, registry
+`077543d032ff37166ee500b888878d0a9a44f0c73c80ed5cbe0480dda1412008`. The
+137,457,612-byte male library (+249,496 bytes over baseline) remains bundled;
+the female review library is 138,809,298 bytes and is not in the Flutter bundle.
+
+Preparation tests PASS (19); focused catalog/media tests PASS (20, no skips),
+including real asset decoding; analysis reports zero issues; named generated
+Dart formatting reports zero changes. Parent checks PASS (`make check`, 28
+packages; `make smoke`). No Android device check, installation, release or
+public publication was performed. Existing license grants were not expanded;
+public asset rights remain a separate decision.
+
 ## Catalog publication qualification — 2026-11-11
 
 The integrated catalog branch includes current public main and the latest private

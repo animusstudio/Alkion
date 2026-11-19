@@ -1,4 +1,8 @@
 import copy
+import contextlib
+import io
+import json
+from unittest.mock import patch
 from pathlib import Path
 import tempfile
 import unittest
@@ -97,6 +101,155 @@ class ArtworkPreparationTest(unittest.TestCase):
         self.assertEqual(tool.normalized_registrations(generated), tool.normalized_registrations(compact))
         self.assertNotEqual(tool.normalized_registrations(generated),
                             tool.normalized_registrations(compact.replace("revision: 2", "revision: 3")))
+
+    def test_explicit_female_edition_and_quality_flags(self):
+        target = self.app / "assets/exercise_artwork/female/synthetic_press.webp"
+        target.parent.mkdir()
+        target.write_bytes(self.asset.read_bytes())
+        self.entry["asset"] = "assets/exercise_artwork/female/synthetic_press.webp"
+        with self.assertRaisesRegex(ValueError, "Invalid/duplicate asset"):
+            tool.validate(self.manifest, self.app)
+        self.manifest["edition"] = "female"
+        self.entry["quality_status"] = "agreed_defect"
+        receipt = tool.validate(self.manifest, self.app, self.catalog)
+        self.assertEqual(receipt["edition"], "female")
+        self.assertEqual(receipt["quality_status_counts"], {"agreed_defect": 1})
+        self.entry["quality_status"] = "invented_approval"
+        with self.assertRaisesRegex(ValueError, "Unknown quality"):
+            tool.validate(self.manifest, self.app)
+
+    def test_manifest_numbers_match_registry_for_both_editions(self):
+        registry = {"format": tool.REGISTRY_FORMAT, "next_number": 43,
+                    "entries": [{"variant_key": "synthetic_press", "number": 42}]}
+        self.entry["library_number"] = 42
+        tool.validate(self.manifest, self.app, self.catalog, registry)
+        self.entry["library_number"] = 1
+        with self.assertRaisesRegex(ValueError, "library number"):
+            tool.validate(self.manifest, self.app, self.catalog, registry)
+
+    def _dual_manifests(self):
+        self.entry["library_number"] = 42
+        female = copy.deepcopy(self.manifest)
+        female["edition"] = "female"
+        female["entries"][0]["asset"] = "assets/exercise_artwork/female/synthetic_press.webp"
+        target = self.app / female["entries"][0]["asset"]
+        target.parent.mkdir()
+        target.write_bytes(self.asset.read_bytes())
+        root = self.app / "assets/exercise_artwork"
+        (root / "manifest.json").write_text(json.dumps(self.manifest))
+        (root / "female-manifest.json").write_text(json.dumps(female))
+        (root / "library-numbers.json").write_text(json.dumps({
+            "format": tool.REGISTRY_FORMAT, "next_number": 43,
+            "entries": [{"variant_key": "synthetic_press", "number": 42}]}))
+        generated = self.app / "lib/catalog"
+        generated.mkdir(parents=True)
+        return female, generated
+
+    def test_default_cli_validates_and_generates_both_edition_tables(self):
+        female, generated = self._dual_manifests()
+        with patch.object(tool, "APP", self.app), patch("sys.argv", ["prepare", "--write"]):
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                self.assertEqual(tool.main(), 0)
+        receipt = json.loads(output.getvalue())
+        self.assertEqual([r["edition"] for r in receipt["editions"]], ["male", "female"])
+        self.assertEqual((generated / "catalog_artwork_data.dart").read_text(),
+                         tool.registrations(self.manifest))
+        female_dart = (generated / "catalog_artwork_female_data.dart").read_text()
+        self.assertEqual(female_dart, tool.registrations(female))
+        self.assertIn("const _femaleArtwork", female_dart)
+        self.assertIn("assets/exercise_artwork/female/synthetic_press.webp", female_dart)
+        with patch.object(tool, "APP", self.app), patch("sys.argv", ["prepare"]):
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(tool.main(), 0)
+
+    def test_bad_female_asset_prevents_either_generated_table_write(self):
+        female, generated = self._dual_manifests()
+        male_dart = generated / "catalog_artwork_data.dart"
+        male_dart.write_text("unchanged")
+        (self.app / female["entries"][0]["asset"]).write_bytes(b"corrupt")
+        with patch.object(tool, "APP", self.app), patch("sys.argv", ["prepare", "--write"]):
+            with contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(tool.main(), 1)
+        self.assertEqual(male_dart.read_text(), "unchanged")
+        self.assertFalse((generated / "catalog_artwork_female_data.dart").exists())
+
+    def test_unreviewed_female_has_no_male_fallback_registration(self):
+        female, _ = self._dual_manifests()
+        female["entries"][0]["review_status"] = "pending"
+        self.assertIn("synthetic_press", tool.registrations(self.manifest))
+        self.assertNotIn("synthetic_press", tool.registrations(female))
+        self.assertEqual(tool.registrations(female), tool.registrations(copy.deepcopy(female)))
+
+
+class PublishablePathsTest(unittest.TestCase):
+    def test_http_sources_and_embedded_links_are_publishable(self):
+        tool.publishable({"sources": [
+            {"url": "https://example.invalid/exercise?variant=synthetic"},
+            {"url": "http://example.invalid/guide#exercise"},
+            {"evidence": "Source: https://example.invalid/guide (reviewed)."},
+        ]})
+
+    def test_windows_absolute_drives_are_rejected_at_token_boundaries(self):
+        for drive in ("C:/private/source.png", r"D:\private\source.png"):
+            for prefix in ("", "source=", "Source: ", "(", '\"', "["):
+                with self.subTest(path=prefix + drive):
+                    with self.assertRaisesRegex(ValueError, "private or traversing"):
+                        tool.publishable({"source": prefix + drive})
+
+    def test_existing_private_and_traversing_paths_stay_rejected(self):
+        # "/" + "home/..." keeps the public-push leak scan off this synthetic path.
+        for value in ("/" + "home/synthetic/source.png", "/Users/synthetic/source.png",
+                      "/tmp/source.png", "file://synthetic.invalid/private.png",
+                      "../source.png", "assets/../source.png"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "private or traversing"):
+                    tool.publishable({"nested": [{"source": value}]})
+
+
+class LibraryNumberRegistryTest(unittest.TestCase):
+    def setUp(self):
+        self.registry = {"format": tool.REGISTRY_FORMAT, "next_number": 793,
+                         "entries": [{"variant_key": "first", "number": 1},
+                                     {"variant_key": "retired", "number": 792}]}
+
+    def test_reorder_removal_revision_and_reintroduction_keep_reservations(self):
+        removed = tool.reconcile_registry(self.registry, ["first"])
+        self.assertEqual(removed, self.registry)
+        reintroduced = tool.reconcile_registry(removed, ["retired", "first"])
+        self.assertEqual(reintroduced, self.registry)
+        # Only variant identity participates: revisions, names and source IDs do not.
+        self.assertEqual(tool.validate_registry(reintroduced), {"first": 1, "retired": 792})
+
+    def test_new_keys_append_after_reserved_gaps_independent_of_catalog_order(self):
+        updated = tool.reconcile_registry(self.registry, ["new_z", "first", "new_a"])
+        self.assertEqual(tool.validate_registry(updated, self.registry),
+                         {"first": 1, "retired": 792, "new_a": 793, "new_z": 794})
+        self.assertEqual(updated["next_number"], 795)
+        self.assertEqual(updated, tool.reconcile_registry(self.registry, ["new_a", "new_z", "first"]))
+
+    def test_previous_registry_rejects_removal_reassignment_compaction_and_gap_reuse(self):
+        for mutation in ("remove", "swap", "compact", "reuse_gap"):
+            changed = copy.deepcopy(self.registry)
+            if mutation == "remove":
+                changed["entries"].pop()
+            elif mutation == "swap":
+                changed["entries"][0]["number"], changed["entries"][1]["number"] = 792, 1
+            elif mutation == "compact":
+                changed["next_number"] = 792
+            else:
+                changed["entries"].append({"variant_key": "new", "number": 2})
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                tool.validate_registry(changed, self.registry)
+
+    def test_duplicate_keys_numbers_and_bool_numbers_are_rejected(self):
+        for entry in ({"variant_key": "first", "number": 2},
+                      {"variant_key": "new", "number": 1},
+                      {"variant_key": "new", "number": True}):
+            changed = copy.deepcopy(self.registry)
+            changed["entries"].append(entry)
+            with self.assertRaises(ValueError):
+                tool.validate_registry(changed)
 
 
 if __name__ == "__main__":

@@ -77,6 +77,8 @@ flutter:
     - assets/character_body/
     # Reviewed owner recognition stills; separate from Workout Guide licensing.
     - assets/exercise_artwork/manifest.json
+    - assets/exercise_artwork/female-manifest.json
+    - assets/exercise_artwork/female/
     - assets/exercise_artwork/images/
     - assets/icon/alkion-foreground-1024.png
     - assets/icon/entry/

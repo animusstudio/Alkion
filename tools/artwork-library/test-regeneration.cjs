@@ -1,0 +1,261 @@
+/* Real loopback helper + filesystem assertions, exclusively disposable queues. */
+'use strict';
+const {chromium} = require('playwright');
+const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const path = require('node:path');
+const os = require('node:os');
+const {spawn} = require('node:child_process');
+const http = require('node:http');
+const {createHash} = require('node:crypto');
+
+(async () => {
+  const root = path.resolve(__dirname, '../..');
+  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'alkion-regeneration-browser-'));
+  const queuePath = path.join(temporary, 'queue.json');
+  const helper = spawn('python3', ['app/tool/serve_artwork_library.py', '--queue', queuePath, '--port', '0'], {cwd: root});
+  let browser;
+  let cacheFixture;
+  let helperErrors = '';
+  helper.stderr.on('data', chunk => { helperErrors += chunk; });
+  try {
+    const url = await new Promise((resolve, reject) => {
+      let output = '';
+      const timeout = setTimeout(() => reject(new Error('Helper did not start: ' + helperErrors)), 30000);
+      helper.stdout.on('data', chunk => {
+        output += chunk;
+        const match = output.match(/http:\/\/127\.0\.0\.1:\d+\/tools\/artwork-library\//);
+        if (match) { clearTimeout(timeout); resolve(match[0]); }
+      });
+      helper.on('exit', code => { clearTimeout(timeout); reject(new Error(`Helper exited ${code}: ${helperErrors}`)); });
+    });
+    const readQueue = async () => JSON.parse(await fs.readFile(queuePath, 'utf8'));
+    assert.deepEqual((await readQueue()).entries, []); // Created as an actual file at startup.
+    browser = await chromium.launch({headless: true, ...(process.env.BROWSER_EXECUTABLE ? {executablePath: process.env.BROWSER_EXECUTABLE} : {})});
+    const context = await browser.newContext({viewport: {width: 1440, height: 1000}});
+    const page = await context.newPage();
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    const status = page.locator('#regeneration-status');
+    const mark = number => page.locator(`#exercise-${number} > .regeneration-button`);
+    const ready = async count => {
+      await page.waitForFunction(count => document.getElementById('regeneration-status').textContent === `Saved in queue file: ${count} marked images.`, count);
+    };
+    await page.goto(url);
+    await ready(0);
+    // The current URL resolves to the selected bytes, including both lever fixes.
+    const selectedImages = await page.evaluate(() => [771, 772].map(number =>
+      window.ALKION_ARTWORK_LIBRARY.items.find(item => item.number === number).editions.male));
+    for (const image of selectedImages) {
+      const address = new URL(image.asset, url);
+      assert.equal(address.searchParams.get('v'), image.sha256);
+      const response = await context.request.get(address.href);
+      assert.equal(response.status(), 200);
+      assert.equal(createHash('sha256').update(await response.body()).digest('hex'), image.sha256);
+    }
+    // Reproduce a cached prior revision at an unchanged filename in disposable HTTP.
+    const selected = selectedImages[0];
+    const imagePath = new URL(selected.asset, url).pathname;
+    const currentBytes = await fs.readFile(path.join(root, imagePath));
+    const priorBytes = await fs.readFile(path.join(root, new URL(selectedImages[1].asset, url).pathname));
+    let replaced = false;
+    let imageRequests = 0;
+    cacheFixture = http.createServer((request, response) => {
+      if (new URL(request.url, 'http://fixture').pathname === imagePath) {
+        imageRequests++;
+        response.writeHead(200, {'Content-Type': 'image/webp', 'Cache-Control': 'public, max-age=3600'});
+        response.end(replaced ? currentBytes : priorBytes);
+      } else { response.writeHead(200, {'Content-Type': 'text/html'}); response.end('<!doctype html><title>Disposable cache fixture</title>'); }
+    });
+    await new Promise(resolve => cacheFixture.listen(0, '127.0.0.1', resolve));
+    const cacheOrigin = `http://127.0.0.1:${cacheFixture.address().port}`;
+    const cachedPage = await context.newPage();
+    await cachedPage.goto(cacheOrigin);
+    const fetchBytes = address => cachedPage.evaluate(async address => [...new Uint8Array(await (await fetch(address)).arrayBuffer())], address);
+    const priorURL = cacheOrigin + imagePath;
+    assert.deepEqual(Buffer.from(await fetchBytes(priorURL)), priorBytes);
+    replaced = true;
+    assert.deepEqual(Buffer.from(await fetchBytes(priorURL)), priorBytes);
+    assert.equal(imageRequests, 1); // Confirm a real browser cache hit for old bytes.
+    const revisionURL = new URL(selected.asset, cacheOrigin + '/tools/artwork-library/').href;
+    assert.deepEqual(Buffer.from(await fetchBytes(revisionURL)), currentBytes);
+    assert.equal(imageRequests, 2);
+    await cachedPage.evaluate(async address => {
+      const image = new Image(); image.src = address; await image.decode();
+      if (image.naturalWidth !== 640) throw new Error('Versioned image did not decode');
+    }, revisionURL);
+    await cachedPage.close();
+    // Current generated data: filters and navigation never modify queue bytes.
+    const emptyQueueBytes = await fs.readFile(queuePath, 'utf8');
+    const visibleNumbers = () => page.locator('.exercise:visible').evaluateAll(nodes => nodes.map(node => Number(node.id.slice(9))));
+    const expectedLatest = edition => page.evaluate(edition => {
+      const data = window.ALKION_ARTWORK_LIBRARY;
+      const cohort = data.latest_regeneration;
+      return data.items.filter(item => item.editions[edition].illustration >= cohort.source_illustration_min &&
+        item.editions[edition].illustration <= cohort.source_illustration_max)
+        .sort((a, b) => b.editions[edition].illustration - a.editions[edition].illustration || a.number - b.number)
+        .map(item => item.number);
+    }, edition);
+    await page.locator('#scope').selectOption('latest');
+    await page.locator('#order').selectOption('newest');
+    const maleLatest = await expectedLatest('male');
+    const femaleLatest = await expectedLatest('female');
+    const expectedCounts = await page.evaluate(() => window.ALKION_ARTWORK_LIBRARY.latest_regeneration.expected_counts);
+    assert.ok(expectedCounts.male > 0 && expectedCounts.female > 0);
+    assert.equal(maleLatest.length, expectedCounts.male);
+    assert.equal(femaleLatest.length, expectedCounts.female);
+    assert.deepEqual(await visibleNumbers(), maleLatest);
+    await page.locator(`#exercise-${maleLatest[0]} .exercise-button`).click();
+    assert.equal(await page.locator('#previous').isDisabled(), true);
+    await page.locator('#next').click();
+    assert.match(await page.locator('#inspection-title').innerText(), new RegExp('^#' + maleLatest[1] + ' ·'));
+    await page.locator('#close').click();
+    await page.locator('input[name=edition][value=female]').check();
+    assert.deepEqual(await visibleNumbers(), femaleLatest);
+    await page.reload();
+    await ready(0);
+    assert.deepEqual(await visibleNumbers(), femaleLatest);
+    await page.screenshot({path: path.join(temporary, 'latest-desktop.png')});
+    await page.setViewportSize({width: 360, height: 800});
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.screenshot({path: path.join(temporary, 'latest-narrow.png')});
+    assert.equal(await fs.readFile(queuePath, 'utf8'), emptyQueueBytes);
+    await page.setViewportSize({width: 1440, height: 1000});
+    await page.locator('#scope').selectOption('all');
+    await page.locator('#order').selectOption('number');
+    await page.locator('input[name=edition][value=male]').check();
+    await page.locator('#search').fill('#13');
+    assert.equal(await page.locator('.exercise:visible').count(), 1);
+    assert.equal(await page.locator('.exercise-button .regeneration-button').count(), 0);
+    await mark(13).click();
+    await ready(1);
+    const maleSnapshot = (await readQueue()).entries[0];
+    assert.equal(maleSnapshot.number, 13);
+    assert.equal(maleSnapshot.variant_key, 'cable_row_triangle');
+    assert.equal(maleSnapshot.edition, 'male');
+    assert.match(maleSnapshot.sha256, /^[a-f0-9]{64}$/);
+    await page.locator('input[name=edition][value=female]').check();
+    assert.equal(await mark(13).getAttribute('aria-pressed'), 'false');
+    await page.locator('#exercise-13 .exercise-button').click();
+    await page.locator('#inspection-regeneration').click();
+    await ready(2);
+    await page.reload();
+    await ready(2);
+    assert.equal(await page.locator('#inspection-regeneration').getAttribute('aria-pressed'), 'true');
+    await page.locator('input[name=inspection-edition][value=male]').check();
+    assert.equal(await page.locator('#inspection-regeneration').getAttribute('aria-pressed'), 'true');
+    await page.locator('#inspection-regeneration').click();
+    await ready(1);
+    assert.equal((await readQueue()).entries[0].edition, 'female');
+    await page.locator('#close').click();
+    await page.locator('#search').fill('');
+    await page.locator('#scope').selectOption('latest');
+    await page.locator('#order').selectOption('newest');
+    assert.deepEqual(await visibleNumbers(), maleLatest);
+    await page.locator('#scope').selectOption('all');
+    await page.locator('#order').selectOption('number');
+
+    // Two live tabs apply independent desired-state changes without replacing the file.
+    const other = await context.newPage();
+    await other.goto(url);
+    await other.waitForFunction(() => document.getElementById('regeneration-status').textContent.includes('Saved in queue file'));
+    await page.locator('#search').fill('#13');
+    await other.locator('#search').fill('#14');
+    await Promise.all([mark(13).click(), other.locator('#exercise-14 > .regeneration-button').click()]);
+    await Promise.all([page.waitForFunction(() => !document.querySelector('#exercise-13 > .regeneration-button').disabled), other.waitForFunction(() => !document.querySelector('#exercise-14 > .regeneration-button').disabled)]);
+    assert.equal((await readQueue()).entries.length, 3);
+
+    // Preserve the exact image flagged earlier, even after an artwork revision.
+    const stored = await readQueue();
+    const oldFemale = stored.entries.find(entry => entry.number === 13 && entry.edition === 'female');
+    oldFemale.sha256 = '0'.repeat(64);
+    oldFemale.illustration = 9999;
+    await fs.writeFile(queuePath, JSON.stringify(stored));
+    await page.reload();
+    await ready(3);
+    const selection = await page.evaluate(() => {
+      const item = window.ALKION_ARTWORK_LIBRARY.items.find(item => item.number === 13);
+      const image = item.editions.female;
+      return {number: item.number, variant_key: item.key, edition: 'female', revision: item.revision,
+        sha256: image.sha256, illustration: image.illustration, source_sheet_sha256: image.source_sheet_sha256, source_cell: image.source_cell};
+    });
+    const duplicate = await page.evaluate(async selection => {
+      const response = await fetch('/api/regeneration', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({number: 13, edition: 'female', marked: true, selection})});
+      return {status: response.status, queue: await response.json()};
+    }, selection);
+    assert.equal(duplicate.status, 200);
+    assert.deepEqual(duplicate.queue.entries.find(entry => entry.number === 13 && entry.edition === 'female'), oldFemale);
+
+    // A failed write never claims success; Retry preserves the same desired operation.
+    await page.locator('#search').fill('#15');
+    let failOnce = true;
+    await page.route('**/api/regeneration', async route => {
+      if (route.request().method() === 'POST' && failOnce) {
+        failOnce = false;
+        await route.fulfill({status: 503, contentType: 'application/json', body: '{"error":"Synthetic write failure"}'});
+      } else await route.continue();
+    });
+    await mark(15).click();
+    await page.waitForFunction(() => document.getElementById('regeneration-status').textContent.includes('Save not confirmed'));
+    assert.equal((await readQueue()).entries.length, 3);
+    assert.equal(await mark(15).getAttribute('aria-pressed'), 'false');
+    assert.equal(await mark(15).isDisabled(), true);
+    await page.locator('#regeneration-retry').click();
+    await ready(4);
+    assert.equal((await readQueue()).entries.length, 4);
+    // Lost acknowledgement: write occurred, GET reconciles, retry stays idempotent.
+    await page.unroute('**/api/regeneration');
+    await page.locator('#search').fill('#16');
+    let loseOnce = true;
+    await page.route('**/api/regeneration', async route => {
+      if (route.request().method() === 'POST' && loseOnce) {
+        loseOnce = false;
+        await route.fetch();
+        await route.abort('failed');
+      } else await route.continue();
+    });
+    await mark(16).click();
+    await page.waitForFunction(() => document.getElementById('regeneration-status').textContent.includes('Save not confirmed'));
+    assert.equal((await readQueue()).entries.length, 5);
+    await page.locator('#regeneration-retry').click();
+    await ready(5);
+    assert.equal((await readQueue()).entries.length, 5);
+    await page.unroute('**/api/regeneration');
+    const downloadEvent = page.waitForEvent('download');
+    await page.locator('#regeneration-download').click();
+    const download = await downloadEvent;
+    assert.deepEqual(JSON.parse(await fs.readFile(await download.path(), 'utf8')), await readQueue());
+
+    await page.locator('#search').fill('');
+    await page.screenshot({path: path.join(temporary, 'desktop.png')});
+    await page.setViewportSize({width: 360, height: 800});
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.screenshot({path: path.join(temporary, 'narrow.png')});
+    await page.locator('#search').fill('#13');
+    await page.locator('#exercise-13 .exercise-button').click();
+    assert.equal(await page.locator('dialog').evaluate(node => node.scrollWidth <= node.clientWidth), true);
+    await page.waitForFunction(() => {
+      const image = document.getElementById('full-image');
+      return image.complete && image.naturalWidth > 0 && image.parentElement.querySelector('.image-loading').hidden;
+    });
+    await page.evaluate(async () => {
+      await document.getElementById('full-image').decode();
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    });
+    await page.screenshot({path: path.join(temporary, 'narrow-inspection.png')});
+    await page.locator('#close').click();
+    // Corrupt/newer queue rejection preserves bytes and blocks controls.
+    const unknown = '{"format":"future-v99","entries":[]}';
+    await fs.writeFile(queuePath, unknown);
+    await page.reload();
+    await page.waitForFunction(() => document.getElementById('regeneration-status').textContent.includes('Cannot load'));
+    assert.equal(await mark(13).isDisabled(), true);
+    assert.equal(await fs.readFile(queuePath, 'utf8'), unknown);
+    assert.deepEqual(errors, []);
+    console.log(JSON.stringify({result: 'PASS', mode: 'real HTTP + disposable queue file', screenshots: temporary, checks: 'edition persistence, concurrency, idempotency, revision snapshot, failed/lost writes, export, corrupt queue, responsive controls'}));
+  } finally {
+    if (browser) await browser.close();
+    if (cacheFixture) { cacheFixture.closeAllConnections(); await new Promise(resolve => cacheFixture.close(resolve)); }
+    helper.kill('SIGTERM');
+  }
+})().catch(error => { console.error(error); process.exitCode = 1; });

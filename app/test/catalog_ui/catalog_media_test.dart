@@ -11,6 +11,8 @@ import 'package:alkion/catalog_ui/catalog_scope.dart';
 import 'package:alkion/catalog_ui/catalog_runtime_state.dart';
 import '../support/memory_catalog_state.dart';
 import 'package:alkion/l10n/app_localizations.dart';
+import 'package:alkion/settings/settings_service.dart';
+import 'package:provider/provider.dart';
 import 'package:alkion/theme/alkion_icon.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
@@ -31,6 +33,18 @@ import 'catalog_discovery_picker_test.dart'
 
 const _benchName = 'Synthetic bench recognition';
 final _benchId = fixtureId(501);
+
+/// UI-only preference notifier; persistence is covered by profile picker tests.
+class _ArtworkSettings extends SettingsService {
+  String _style = 'male';
+  @override
+  String get bodyStyle => _style;
+  @override
+  Future<void> setBodyStyle(String value) async {
+    _style = value;
+    notifyListeners();
+  }
+}
 
 /// An in-memory state whose runtime can be retired while a sheet is open.
 class _RetirableState extends MemoryCatalogState {
@@ -185,6 +199,8 @@ void main() {
   testWidgets('family rows preview stable art without registering a variant', (
     tester,
   ) async {
+    final settings = _ArtworkSettings();
+    addTearDown(settings.dispose);
     final source = syntheticCatalog();
     final family = (source['families'] as List).first as Map;
     family['key'] = 'biceps_curl';
@@ -193,7 +209,14 @@ void main() {
       CatalogBundle.fromJsonString(jsonEncode(source)),
     );
     addTearDown(state.dispose);
-    await tester.pumpWidget(_app(CatalogPicker(state: state, multiple: false)));
+    await tester.pumpWidget(
+      _app(
+        ChangeNotifierProvider<SettingsService>.value(
+          value: settings,
+          child: CatalogPicker(state: state, multiple: false),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     final row = find.byKey(
       ValueKey('catalog-navigation-family-${fixtureId(1)}'),
@@ -217,6 +240,14 @@ void main() {
       tester.widget<CatalogArtworkThumbnail>(artwork).artwork.asset,
       endsWith('/standing_dumbbell_curl.webp'),
     );
+    for (final edition in ['female', 'male']) {
+      await settings.setBodyStyle(edition);
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<CatalogArtworkThumbnail>(artwork).artwork.asset,
+        'assets/exercise_artwork/${edition == 'female' ? 'female' : 'images'}/standing_dumbbell_curl.webp',
+      );
+    }
     // A family preview does not claim one equipment kind for all its children.
     expect(
       find.descendant(of: row, matching: find.byType(CatalogEquipmentIcon)),
@@ -228,6 +259,87 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets(
+    'artwork changes reach modal rows and open details without changing choices',
+    (tester) async {
+      final settings = _ArtworkSettings();
+      await settings.setBodyStyle('female');
+      addTearDown(settings.dispose);
+      final state = _mediaState();
+      addTearDown(state.dispose);
+      final selected = CatalogChoice.variant(_benchId);
+      state.remember(selected);
+      state.toggleFavorite(selected);
+      final recentKeys = state.recents.map((choice) => choice.key).toList();
+      final favorites = {...state.favorites};
+      await tester.pumpWidget(
+        _app(
+          // Deliberately below Navigator: the modal must carry this exact notifier.
+          ChangeNotifierProvider<SettingsService>.value(
+            value: settings,
+            child: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => showCatalogPicker(
+                  context,
+                  state: state,
+                  multiple: true,
+                  currentChoice: selected,
+                ),
+                child: const Text('Open catalog'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Open catalog'));
+      await tester.pumpAndSettle();
+      await _query(tester);
+      String rowAsset() =>
+          tester.widget<CatalogPickerRow>(_row()).artwork!.asset;
+      expect(rowAsset(), contains('/female/'));
+      await tester.tap(_row());
+      await tester.pumpAndSettle();
+      final l = AppLocalizations.of(tester.element(_row()));
+      for (final edition in ['male', 'female']) {
+        await settings.setBodyStyle(edition);
+        await tester.pumpAndSettle();
+        expect(
+          rowAsset(),
+          contains('/${edition == 'female' ? 'female' : 'images'}/'),
+        );
+        final row = tester.widget<CatalogPickerRow>(_row());
+        expect(row.current, isTrue);
+        expect(row.selected, isTrue);
+        expect(row.count, 1);
+        expect(row.favorite, isTrue);
+      }
+      await _details(tester, l);
+      for (final edition in ['male', 'female']) {
+        await settings.setBodyStyle(edition);
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<CatalogArtworkDetails>(find.byType(CatalogArtworkDetails))
+              .artwork
+              .asset,
+          'assets/exercise_artwork/${edition == 'female' ? 'female' : 'images'}/barbell_bench_press.webp',
+        );
+        expect(find.text(_benchName), findsWidgets);
+      }
+      await tester.tap(find.byTooltip(l.commonDone));
+      await tester.pumpAndSettle();
+      expect(rowAsset(), contains('/female/'));
+      final row = tester.widget<CatalogPickerRow>(_row());
+      expect(row.selected, isTrue);
+      expect(row.count, 1);
+      expect(row.current, isTrue);
+      expect(state.recents.map((choice) => choice.key), recentKeys);
+      expect(state.favorites, favorites);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets('actual artwork decoding stays bounded at high pixel density', (
     tester,

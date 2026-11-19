@@ -20,7 +20,7 @@ const _artwork = <String, _ArtworkRegistration>{
       asset:
           'assets/exercise_artwork/images/alternating_arm_ski_ergometer.webp',
       sha256:
-          '457fadb216b076f3f682fc78ebd440c32d0f37ac4e2bcceeeb0c5b7b8d2aa531',
+          '5d4a2cedbf10d7d448a5c38f5d329647f6402bbe540aad0792ec0b725d348de0',
     ),
   ),
   'alternating_battle_rope_wave': _ArtworkRegistration(
@@ -141,7 +141,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/back_lever_hold.webp',
       sha256:
-          '6731d2601167fa495fe48576741fc648d0f708e93b3039c9f6bab1d54ad6cc2a',
+          '7fe8869e6f4d1c53646b6438a11f4d5fe7558b49bee04a77909a7df73df1d9ef',
     ),
   ),
   'back_squat': _ArtworkRegistration(
@@ -161,7 +161,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/backstroke_swimming.webp',
       sha256:
-          'a63ac17253c34a8965cbc6cb00b86e8d3aceab8e649a25411188ff727d25e38c',
+          '27cf69248e8c52a945d518aa55beeaa9485ee9c4ca6e5be1f4181de1a26a277d',
     ),
   ),
   'backward_sled_drag': _ArtworkRegistration(
@@ -286,7 +286,7 @@ const _artwork = <String, _ArtworkRegistration>{
       asset:
           'assets/exercise_artwork/images/ball_supported_trunk_rotation.webp',
       sha256:
-          'c2733af889c0301ca1090d6640c6e82e5464b0c479f8ab9c7935d26e409e9e7c',
+          'c59848ff0e5b8bddf7486e433a08e03788b963a9f51743f50d2de1b31840b6fb',
     ),
   ),
   'band_anchored_reverse_fly': _ArtworkRegistration(
@@ -374,7 +374,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/band_clamshell.webp',
       sha256:
-          '9578bc41d613e802647b6eb9a30e0e44e875af3005fae24b934e7916dbc39316',
+          '666a417117030a1864b70ffba88803272add64c5085cc3f8a823da72bec18d2a',
     ),
   ),
   'band_crunch': _ArtworkRegistration(
@@ -414,7 +414,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/band_external_rotation.webp',
       sha256:
-          'fd3d404b4fc041b892071468f82ca79048a0217891e8aebf9f8a3aac3b5795db',
+          'fc3443676533e201007b1a340a6df118d904f08bdaad711dc0f1478444891e56',
     ),
   ),
   'band_face_pull': _ArtworkRegistration(
@@ -474,7 +474,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/band_hip_kickback.webp',
       sha256:
-          '0e6f1f7f673520c661917edef0845b767657fd97da2b12f9b7f4b2b0549ec79e',
+          '3f991a0da8565234792545f18524c6ad574a7b9b4a8f84037719774363388c3a',
     ),
   ),
   'band_internal_rotation': _ArtworkRegistration(
@@ -534,7 +534,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/band_lying_triceps_extension.webp',
       sha256:
-          'cc1577cfac21a1d9d487c703c12b8e20f8f811de1334ebba4f57ddcb52af0a89',
+          '1dbf3cb0f421ead6ebb52e89b50760e22c5f080e83fa0bd207b5493f1198ac09',
     ),
   ),
   'band_overhead_extension': _ArtworkRegistration(
@@ -644,7 +644,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/band_split_squat.webp',
       sha256:
-          'a08bde5d13b481c45c96ed615d341b5c9872cbe254b96769b548067ac1d5f626',
+          '992393d27432d46325dfd0b9d597c2265e5cd6adf6c83f4114583fbffb6208bb',
     ),
   ),
   'band_squat': _ArtworkRegistration(
@@ -744,7 +744,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/bar_inverted_row.webp',
       sha256:
-          'd1000b7f617af1783aa9c38af2cd98ec662a3845ddb5a9fafffd5cb54bc725f1',
+          '9108026a7d0d4618a6b508d2cb0d38f26768f303a0b0c0a9093c11d1abaa677a',
     ),
   ),
   'bar_muscle_up': _ArtworkRegistration(
@@ -1019,7 +1019,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/barbell_overhead_extension.webp',
       sha256:
-          '88ab68db868092a68fb6b2ae1400e37286aae7a6219996745c97ec1d42b638d9',
+          '9095278242eec11b02b764460ae920c502782ee49b52a24563ed871d77e8edd5',
     ),
   ),
   'barbell_overhead_squat': _ArtworkRegistration(
@@ -1053,7 +1053,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/barbell_pin_press.webp',
       sha256:
-          '19a933807dd4e32269381f9e34ce4e7cedcbcf89d2d3c2c0d991c96b8c7419b7',
+          '6938802fb1756ac9a2d173b2e1c3a3e4409f9c8fdf27c9667c158b13e4fb18f6',
     ),
   ),
   'barbell_power_clean': _ArtworkRegistration(
@@ -1191,7 +1191,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/barbell_skull_crusher.webp',
       sha256:
-          'd50cc04de6b0730ce727d2ce62f115be467779f63dc3820cf14a3dd68e9a6484',
+          '97aee46bd2f38b3f581f6a207ab462ac235d9e4f54c0f16b09f055fa44c4aad7',
     ),
   ),
   'barbell_snatch': _ArtworkRegistration(
@@ -1315,7 +1315,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/barbell_wrist_curl.webp',
       sha256:
-          '4a2bc9677632a29f2a0852117ad9405b26631f2535015dc52f71b9599cc5e2a7',
+          '6d39d4cfc74b8f3546292c4c23895f9b76ce88a73626fb2fd7614583484ec95b',
     ),
   ),
   'barbell_zercher_carry': _ArtworkRegistration(
@@ -1374,7 +1374,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/behind_neck_pulldown.webp',
       sha256:
-          '31f2f784badb47173a5b1a2993ccc8e2cd6621ac1490e6967e4f8b493466f79c',
+          'cb11cf3f7e016ba08d008da0f078865c9dbcffecdc5bd0d5c6c3b3b185cbbe10',
     ),
   ),
   'belt_squat': _ArtworkRegistration(
@@ -1408,7 +1408,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/bench_leg_raise.webp',
       sha256:
-          '0f500436daccbe690efb183c6c2f799c245484ea36db46c4828f8e78905c228c',
+          '15e725a8f9bec96844c2798d11b3aab76c59509fadf29a79760c1023f0252771',
     ),
   ),
   'bench_reverse_hyperextension': _ArtworkRegistration(
@@ -1548,7 +1548,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/bodyweight_frog_pump.webp',
       sha256:
-          '17aa9fb70db26177ddff716e4b68b7c11d80eee7b1d8a831777a1eb51626e7d0',
+          'be0b8b1a0a1904aa8f7420ed286b6c3377124474cbba906454d1d814a6869143',
     ),
   ),
   'bodyweight_glute_bridge': _ArtworkRegistration(
@@ -1738,7 +1738,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/butterfly_swimming.webp',
       sha256:
-          'a536f12968cbc63496a010cba34ed2d8bbe8f324806bcde25f51a8f0b7237f92',
+          '06377f1381de700b09091e6bd62bc38cdf7fc10dccf39f81463f3476f861243b',
     ),
   ),
   'cable_bar_preacher_curl': _ArtworkRegistration(
@@ -1772,7 +1772,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/cable_chest_press.webp',
       sha256:
-          '43b5b9cd006dd31f0b269575f4cf1cc817422c26554c505c8b1475c0dfaa8a95',
+          '7b938b2dec75dc344912fee57f1b5b0fe6f3f12ed4f7f2b4ed0c53ccbc88c501',
     ),
   ),
   'cable_crunch': _ArtworkRegistration(
@@ -1782,7 +1782,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/cable_crunch.webp',
       sha256:
-          'd1d14e91ca9f82d8598a3f62f01b57eea01023006bc15a32b638dfa664898dee',
+          'd40c7d3a74453530a7be3b6250c7d58c0ef19bfdc724f7317eab0215a8fd631a',
     ),
   ),
   'cable_deadlift': _ArtworkRegistration(
@@ -1812,7 +1812,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/cable_external_rotation.webp',
       sha256:
-          '9b13d303e980a6591608b315e4e62f3bd977941aebef33d8590e8a4962e37062',
+          'e713193cae581b773d6faa88c01abf91d15904d16195cd1cd4a36706dfb655aa',
     ),
   ),
   'cable_fly_high_low': _ArtworkRegistration(
@@ -1852,7 +1852,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/cable_forearm_pronation.webp',
       sha256:
-          'cf0f0a6bf9a7dcba6e867f35e4a33fae02c21bd9b4bf116d3d9c5525147c6ab0',
+          '043054428e3f44fb424e36aece9d87c308b0f6dd854c06618e6bab927567bbc2',
     ),
   ),
   'cable_front_raise': _ArtworkRegistration(
@@ -1862,7 +1862,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/cable_front_raise.webp',
       sha256:
-          '3b31faf23838fd954543bb105e12ee073ed9aa3f778b30ace04a4a876f430784',
+          '72672655aca424926b54a374241624752cd799097768d7a52c6563e604748f08',
     ),
   ),
   'cable_hip_abduction': _ArtworkRegistration(
@@ -1942,7 +1942,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/cable_leg_curl.webp',
       sha256:
-          '1919b2808f791ec16fc74cc7e8c79b96c9daaf57d5391c3adf1c0ad5b3699a04',
+          '052a4e8a7cbe043f985f18254e4f36b708cb07615550960899a903fef5d87dc8',
     ),
   ),
   'cable_leg_extension': _ArtworkRegistration(
@@ -1976,7 +1976,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/cable_lying_extension.webp',
       sha256:
-          '53afc9034be224141208470783c897656666221f9e08bd56d3b9bdb699f21a47',
+          '63640ca4b1329883982f8672253b7c6a7418f419bac1070ffc0376c84ce44fa7',
     ),
   ),
   'cable_pallof_press': _ArtworkRegistration(
@@ -1986,7 +1986,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/cable_pallof_press.webp',
       sha256:
-          'a1db09431decb05509975a1beec423fd737eb7cf81c47c887e8447148e7f2c9f',
+          'd528e0dad1c6b063c2746866a2b86bd6ed47926e95322adf72560274650c506e',
     ),
   ),
   'cable_pull_through': _ArtworkRegistration(
@@ -2016,7 +2016,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/cable_rear_delt_row.webp',
       sha256:
-          '85e2c1fcb7e90d18930b9cf2b4e92a080635d8de36c42c510e7bd11f1f781ef7',
+          '1c109b69896363d41bad292b04a045fd686c8d26cbe778eba118d674f9010f66',
     ),
   ),
   'cable_reverse_crunch': _ArtworkRegistration(
@@ -2036,7 +2036,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/cable_reverse_fly.webp',
       sha256:
-          '413ac1041ff2aab3b0aeb1e08c040a0b5130827ea9e1f3b64938d8519a74ecde',
+          'c5974278b5bcfeb59a07a40e27acdbfec33447be52b69536d4c0e0bee42a4b5e',
     ),
   ),
   'cable_row_triangle': _ArtworkRegistration(
@@ -2050,7 +2050,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/cable_row_triangle.webp',
       sha256:
-          'cb6726e5df5fe6095da9426d7669b04ba9c4a4882cd78703e6e77d11d29026f6',
+          'e41792042291f3a2f1ffe33d393e2c24bdfdd21d28b3b0e266ddce3325eede99',
     ),
   ),
   'cable_row_wide': _ArtworkRegistration(
@@ -2168,7 +2168,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/cable_wrist_curl.webp',
       sha256:
-          '65289b7b0a354e17fe128a69f62eb7d96fa3f4d47f3064ac50e9f1072acc9d66',
+          'a90529556c03fe2071e9a04614b2237e6db90ce06cdff29230c4fa5225177df2',
     ),
   ),
   'cable_y_raise': _ArtworkRegistration(
@@ -2178,7 +2178,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/cable_y_raise.webp',
       sha256:
-          '14cbc7f20f2666b915b5778f23bea3bd54a6662fd4eb4d105fcab5dfe4ee935f',
+          '19ba8c0060561c7505248ac597737ce86edb2d63ba75e740a8c9c3b8e414d7d8',
     ),
   ),
   'captains_chair_knee_raise': _ArtworkRegistration(
@@ -2228,7 +2228,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/chest_supported_tbar_row.webp',
       sha256:
-          '5ed336841e0926e635c5bdab84517343ff8a09e8913e0f2073b22c396c5fe68a',
+          'cf3cd51307371edf7b4d3d78ed82791759811f44e078d894712604956e843a06',
     ),
   ),
   'chin_up': _ArtworkRegistration(
@@ -2259,7 +2259,7 @@ const _artwork = <String, _ArtworkRegistration>{
       asset:
           'assets/exercise_artwork/images/close_grip_dumbbell_bench_press.webp',
       sha256:
-          '2c64b44e29633d2c5de3dd5993d280429ff3971796313f30a4789b294dea580e',
+          'f653f4244a4d4a30de31a187cff45b4c94b2c4ca17c895ff98ca90a7321dd5d8',
     ),
   ),
   'close_grip_push_up': _ArtworkRegistration(
@@ -2308,7 +2308,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/copenhagen_plank.webp',
       sha256:
-          'bc954854001ddc03f2038f79bd47ba3af3b255f95fbdb4349f68a746e629535e',
+          'f313db3050b3fbed2bf780f05b6e57e0e49b23c95b7ca4c804495a6f5ffcf3dd',
     ),
   ),
   'crab_walk': _ArtworkRegistration(
@@ -2338,7 +2338,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/cross_body_shoulder_stretch.webp',
       sha256:
-          'ee5520b966b9158eb77e4c419b1790b907e9056597050ee3bfeefa9a26fcd996',
+          '952a06a7be2f32432fa5d0f518ee8d127ff2319e5461954f537fc6de4e71dc78',
     ),
   ),
   'decline_barbell_press': _ArtworkRegistration(
@@ -2362,7 +2362,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/decline_cable_chest_press.webp',
       sha256:
-          '57de0feaf618033d7d7abcb20f180d01cff9753f44d84653b377959b70e226a0',
+          '5d66bda881a6e11e6e16ba2b5a8e3622b8c3b1d6d0b671f688e0043f273a5377',
     ),
   ),
   'decline_crunch': _ArtworkRegistration(
@@ -2382,7 +2382,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/decline_dumbbell_fly.webp',
       sha256:
-          '88083d859c968d0761cfd888b4e86e762f68f5d5b32c132415e91789aef61374',
+          '073ebce349f156efa3d9768c3bb024d9e537e9acfa1a68187eabd9ee3ffd989a',
     ),
   ),
   'decline_dumbbell_lying_extension': _ArtworkRegistration(
@@ -2437,7 +2437,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/decline_reverse_crunch.webp',
       sha256:
-          '584f7d136c5b7dd1025ccc53829ed4409b5a8c06aa76ecd218485da09ba89d80',
+          '98d404c4421dfb859f2bf6a443bf5cfbc41f546330cb9d5d272512914f667870',
     ),
   ),
   'decline_sit_up': _ArtworkRegistration(
@@ -2659,7 +2659,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/dumbbell_floor_fly.webp',
       sha256:
-          '7302750c86851c7f71b45ba3d72578d4fc7b5b61fc1d0e84f0d0c012b916cf12',
+          'ce212f1b21938d0e6e54fb6a97f3247090cb19d77ae4a381ef2fb3f80fa274f8',
     ),
   ),
   'dumbbell_floor_press': _ArtworkRegistration(
@@ -2739,7 +2739,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/dumbbell_handle_push_up.webp',
       sha256:
-          '9eed42d86dfe29cfeee3f9816534b6f325139f62b301b2c17f27061c71978185',
+          '4951040ef9e7b47dc40a1e8366c1e174bd17de7fc30d9aa2ba4806f06497d259',
     ),
   ),
   'dumbbell_hip_thrust': _ArtworkRegistration(
@@ -2893,7 +2893,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/dumbbell_renegade_row.webp',
       sha256:
-          '7be1f2bebd364628f916a6017f113f8ac1965871dbda037dd11d68151fd9e5e3',
+          'ebf489be61fc4eb7da9c0ed1bd80b93e37dae5ac77916fbee7fe0db6443f6fd5',
     ),
   ),
   'dumbbell_reverse_lunge': _ArtworkRegistration(
@@ -3027,7 +3027,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/dumbbell_tate_press.webp',
       sha256:
-          '60fc414dfe27a665db8b554d86162801c8ce6b72186d629ee0e10138fa7dd144',
+          '081a41e103208019dddf3ca6c9ecc78e84623e4870c86f38ed1b4cd893c99e11',
     ),
   ),
   'dumbbell_upright_row': _ArtworkRegistration(
@@ -3202,7 +3202,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/floor_angel.webp',
       sha256:
-          '41525a3bd60db1346cccd08de5fd53c9b225d32d95032f3b61cb1b6dd6ec7256',
+          '584752e8cf9e29b336749fea7f97b5ee8eb02a2c5860ce6971cd87a54d3d3df0',
     ),
   ),
   'floor_bear_crawl': _ArtworkRegistration(
@@ -3256,7 +3256,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/floor_dead_bug.webp',
       sha256:
-          '97d34764cd4d946a7524a125ebfd9301655d966e3f8c77c897503b99abdcf4ed',
+          '0bde0e014e93f56d16656cdd6b737e8e42fe7671403dfceb79e5cbab49abf381',
     ),
   ),
   'floor_downward_dog': _ArtworkRegistration(
@@ -3276,7 +3276,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/floor_handstand_hold.webp',
       sha256:
-          '80cd52223b7c01f9d1589a1e36e1af659135322aa6e1cf31c9c6d6d5c05d87dd',
+          '49c4f8e8349b2a0c62e0ab0331f6054005469557ad5369e9e3f5f27970348af7',
     ),
   ),
   'floor_hollow_hold': _ArtworkRegistration(
@@ -3376,7 +3376,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/forearm_wall_slide.webp',
       sha256:
-          'a308b0c0c977bd408f60b342cc1e6524dc113319236fc485ccac837d6850e1e4',
+          '09bc1d983fc1097e752f31b3cc8ab0046d7d90ba7d62c3a7e33a1383efedc0e7',
     ),
   ),
   'front_crawl_swimming': _ArtworkRegistration(
@@ -3414,7 +3414,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/front_lever_hold.webp',
       sha256:
-          'e3d1795baa06e495af1a0aceaf768ce9d30808a103d09daa62cae0a0123a2d5c',
+          'bfc32c7c34ef0c7bfcea6211f3007f0e43ec92e8109cadeffe458d078275c472',
     ),
   ),
   'front_squat': _ArtworkRegistration(
@@ -3695,7 +3695,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/high_cable_curl.webp',
       sha256:
-          '955d17db33617791e4510d4b4d6749c1273898b057de7034e5771ab75f422995',
+          'cd3f02635def8dc81d45afc8459d74289d86e8e6f9e700bcf3141da4902a524b',
     ),
   ),
   'high_plank': _ArtworkRegistration(
@@ -3831,7 +3831,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/incline_cable_press.webp',
       sha256:
-          'eb58f03d7567bc3435a9805c4eaadfc0bed493b92b0a3edeba76ccd510aad518',
+          '3b25ce947af0e4a05674986bd85946e13aac1fa8fcd8b077ce80d2afa2f4e2ca',
     ),
   ),
   'incline_close_grip_push_up': _ArtworkRegistration(
@@ -3940,7 +3940,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/incline_side_plank.webp',
       sha256:
-          '12663a9c591295432579d5b6aea4728b9f5a8b7eaf968106aba35b1dd4e89617',
+          'f02a6145ada7cf83dd5e3b5ae40fc6f7631c999c8a73ae73685637f83ce367ea',
     ),
   ),
   'incline_single_arm_lateral_raise': _ArtworkRegistration(
@@ -3985,7 +3985,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/kettlebell_around_body_pass.webp',
       sha256:
-          'f276f4c651a9056412bff4635d98135ba315ce9d78d6c5ce8585d41eb8b23adb',
+          '841f355331ec17dd5f95385431e7fbe0a01e64a61670a3488ac1a78d5b6d954e',
     ),
   ),
   'kettlebell_bent_press': _ArtworkRegistration(
@@ -4005,7 +4005,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/kettlebell_curtsy_lunge.webp',
       sha256:
-          '1dce2759c1a670794d7355d4547900338f7fc6dc772d814424ae52e6269f958d',
+          'c5cde47631e3dbf75c665a5e8cd4a8c2995f9636da2bf4e80a5dd37c5bb4f3e4',
     ),
   ),
   'kettlebell_deadlift': _ArtworkRegistration(
@@ -4125,7 +4125,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/kettlebell_reverse_lunge.webp',
       sha256:
-          'ffb66577cd3c5b5c2853220235c9d5c1043b87f6568dbf5c5387b643a89644b9',
+          'c8bc0ffa2c7990581f45513b6f86d1cfc7f7334d569a20e0736104df50805436',
     ),
   ),
   'kettlebell_snatch': _ArtworkRegistration(
@@ -4145,7 +4145,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/kettlebell_split_squat.webp',
       sha256:
-          'ba006368325cc0e8a213798c22d80ecc653871e2f27b6b0358aa6aec11ae6f00',
+          '4df726be3441e66dbd3370719b4eba6e65574dd43d4ac10cacf462f169000455',
     ),
   ),
   'kettlebell_step_up': _ArtworkRegistration(
@@ -4209,7 +4209,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/kipping_chest_to_bar.webp',
       sha256:
-          '15e699512cf4126966cc483c969319d16f7a0111b70e14ad7b024a93737b97b8',
+          '2e2ca9b2ab2f18e4444058826979f7957ce1fe135b470f9753dc209bfb96f442',
     ),
   ),
   'kneeling_ab_wheel': _ArtworkRegistration(
@@ -4250,7 +4250,7 @@ const _artwork = <String, _ArtworkRegistration>{
       asset:
           'assets/exercise_artwork/images/kneeling_bodyweight_triceps_extension.webp',
       sha256:
-          '01bbe5d15911f820c0e512e348560bec17db2ff7b052640133db671bb76e0ff1',
+          '445a3561ff1da1c11041e2acbe9bd92d2ab9e13d76c6d646e0410b0eccd47f65',
     ),
   ),
   'kneeling_cable_external_rotation': _ArtworkRegistration(
@@ -4315,7 +4315,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/kneeling_reverse_nordic.webp',
       sha256:
-          '6a8b170f3af6831bd5f0e55c48ecde7137885e37c92a4b4366a2ae91b043f010',
+          'ea6980dcbaef721101c0a9eddcef0f3258f21590effb9f44619c9001d69c3862',
     ),
   ),
   'l_sit_pull_up': _ArtworkRegistration(
@@ -4325,7 +4325,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/l_sit_pull_up.webp',
       sha256:
-          '5a08e5f1ef94b0d34d79e3cf64f5c48403dce395345352d5efd5ed26eb265b19',
+          '78c6d7c62331cac63d4a42623a6120feec807471ec445815895f96fb8082a62e',
     ),
   ),
   'landmine_press': _ArtworkRegistration(
@@ -4335,7 +4335,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/landmine_press.webp',
       sha256:
-          'bda7aeab758027fb98048b8d1c8ce08a3a516e8865534a87ed513e6bb9f4cf70',
+          'c39d5c78cc9aa02d1bbcc21c6adb46b6d44c3c996c0baaa88351fa1e60b62d1b',
     ),
   ),
   'landmine_push_press': _ArtworkRegistration(
@@ -4345,7 +4345,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/landmine_push_press.webp',
       sha256:
-          '44112e8f8b01445aa14327780a41c364ec47f0570a9971cdb450d2329c1e8f4b',
+          '507e9e8f94bc9d0900da699f6f00621f048faa805e31de0ef8ec96acea215dfa',
     ),
   ),
   'landmine_rotation': _ArtworkRegistration(
@@ -4435,7 +4435,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/lying_cable_curl.webp',
       sha256:
-          '3c0b482816c4ce8ea0990be2a77eee2fe7b920d8ff53a96b33b5ab320b9e2a32',
+          '68cac780032706eef41e05602f847334c663b29ae4dfb080bb668c849effe44b',
     ),
   ),
   'lying_dumbbell_pronation': _ArtworkRegistration(
@@ -4449,7 +4449,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/lying_dumbbell_pronation.webp',
       sha256:
-          'a2a5d66a77e4860d04a19d375533322ad81a36b8fedee76d149a5d316765f94b',
+          '4cb3ebd646be7e64d09e80577dd59c51087322d3fe72a39f071dcc0d5c28716d',
     ),
   ),
   'lying_dumbbell_supination': _ArtworkRegistration(
@@ -4463,7 +4463,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/lying_dumbbell_supination.webp',
       sha256:
-          'b44978fe6d09fc9cd0cab26cba4752204afee2c0641b9aef15d79fe36c9957db',
+          'b07181475ab860b82b7c8cea424ce55b3b65ee43fc4207ed4fbee45a4f36a1b0',
     ),
   ),
   'lying_leg_curl': _ArtworkRegistration(
@@ -4473,7 +4473,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/lying_leg_curl.webp',
       sha256:
-          '0b9f5c7a1669fbd1d78f14dfd6ceb5760815bdbe2d47c9a1192219d9f12da438',
+          '244106406848b72ed96f5036db1b6bf1625e8a0af1d1a6c64093ff7e737f4316',
     ),
   ),
   'lying_leg_raise': _ArtworkRegistration(
@@ -4493,7 +4493,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/machine_back_extension.webp',
       sha256:
-          'dff29c6675c98ecae88a79439cdcac83c1e5667cd94dd0771a16ba7344ee24ad',
+          'c39afb5aee4c54a14473c3324716189811680826efc8dfc8bede3b8d8b73d41e',
     ),
   ),
   'machine_crunch': _ArtworkRegistration(
@@ -4513,7 +4513,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/machine_flat_press.webp',
       sha256:
-          'b7594fc96cfd53e8f52d8291f83ae74aea0c3100315e7af779749e905d937624',
+          '9ded9b02f61be25921d990e6c1b13175864e77b891978ed6fe023f6f94959ead',
     ),
   ),
   'machine_fly': _ArtworkRegistration(
@@ -4563,7 +4563,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/machine_hip_kickback.webp',
       sha256:
-          '891506d9b853cc268e39662e34448b1be4551427e16ba16c14c8e88a5f91adeb',
+          'b3f17065a985fc2468e120bbb66794a8c8bf63ef82de3c65bd5981d195b29424',
     ),
   ),
   'machine_hip_thrust': _ArtworkRegistration(
@@ -4593,7 +4593,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/machine_lateral_raise.webp',
       sha256:
-          'c64325aa839ac07210f9a9f318d6ddbd2be5f6e52e125d06711bfb91082a10ff',
+          'eb69fdca0e5d8f70138d55636e35a772e205fe95d1e8fdd61ef2329c2c20a245',
     ),
   ),
   'machine_leg_extension': _ArtworkRegistration(
@@ -4613,7 +4613,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/machine_overhead_extension.webp',
       sha256:
-          '9bb8674aa55dbe2220fe86d04083f538c82d21d544eb727bbed7ef31c5bb6a82',
+          '19faa5490d3470efee9a7808ded4f94ef34e393d95529e76846971c095ff4a1a',
     ),
   ),
   'machine_preacher_curl': _ArtworkRegistration(
@@ -4644,7 +4644,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/machine_pulldown.webp',
       sha256:
-          '6d07a48d513b8a4906262ea7ef9be944e309d053d583e22f2b2773134f372a90',
+          'd84070d2fe2862f4ad1c06f295b073862f8c668fee53e4254de737788d3bc36e',
     ),
   ),
   'machine_pullover': _ArtworkRegistration(
@@ -4654,7 +4654,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/machine_pullover.webp',
       sha256:
-          '3f8391f105eecba1345a7e6cb325b3695f244067ca6271002d203912b43f794b',
+          '496c5f8844aad4e2a88a89ed10f716d8ea25a373ae0e2e1024b7dac6d292481c',
     ),
   ),
   'machine_reverse_fly': _ArtworkRegistration(
@@ -4685,7 +4685,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/machine_rotation.webp',
       sha256:
-          '6e2a9ffccf77f74dd59d5392be4158685014089c0770b2f3090eea3772e3c119',
+          '515c3df08d34fe664b2dfbc2b6289d770d2089f6dcb5acfedf637d6e677a411a',
     ),
   ),
   'machine_seated_dip': _ArtworkRegistration(
@@ -4695,7 +4695,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/machine_seated_dip.webp',
       sha256:
-          'b16b742c97caeee4afec3dee3ecf34c83848db1b46e0626d4cd6eafabca10f9c',
+          'c65fa50e07350923a20f7a5df44a4d4f5eb6eb6ee59e21d667eec490cb5e1ef3',
     ),
   ),
   'machine_shoulder_press': _ArtworkRegistration(
@@ -4705,7 +4705,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/machine_shoulder_press.webp',
       sha256:
-          '320070506ebe9dc2e7d4923a54bac824de36ba2c5d83f43968d5558bdf1db0d0',
+          'e4494e152cee97ac08358f67d2c3922ed1b81eca7e74c237b46539d94d3e05b6',
     ),
   ),
   'machine_shrug': _ArtworkRegistration(
@@ -4736,6 +4736,20 @@ const _artwork = <String, _ArtworkRegistration>{
       asset: 'assets/exercise_artwork/images/machine_tibialis_raise.webp',
       sha256:
           '0039671ceb26c8c5673eeadc9cd1e7785396b6b681ddfd0cc3bc2424423c9633',
+    ),
+  ),
+  'marble_pickup': _ArtworkRegistration(
+    revision: 1,
+    equipmentKind: 'bodyweight',
+    facets: {
+      'laterality': 'unilateral',
+      'position': 'seated',
+      'support': 'chair',
+    },
+    artwork: CatalogExerciseArtwork(
+      asset: 'assets/exercise_artwork/images/marble_pickup.webp',
+      sha256:
+          '289e2e9b5733d7fed12926534c45b43049077981f8fff8aa518c1867ccc77f65',
     ),
   ),
   'medicine_ball_backward_throw': _ArtworkRegistration(
@@ -4840,7 +4854,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/neutral_dumbbell_press.webp',
       sha256:
-          '0d67985c98d88b4834c96b332ba8f83471234c2b7c593a4a93fcec52946df37c',
+          '588f356817e8b59a197c606622c32ad13a23caef4df188cdbc3141b2d3028aa5',
     ),
   ),
   'neutral_incline_dumbbell_press': _ArtworkRegistration(
@@ -4916,7 +4930,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/one_arm_chin_up.webp',
       sha256:
-          '10c34de667427e394aa6c5dcfd4144d473ee6acc02b1f8076b63ef8f4dcc0e72',
+          'e57a5fd71822d8fdcf1bc8dca61b1f574eda0d1cc2fa7053d4f3f6e73bb5422d',
     ),
   ),
   'outdoor_cycling': _ArtworkRegistration(
@@ -5229,7 +5243,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/pull_up.webp',
       sha256:
-          'fdc4a8175cd23a4da72667b622cabd2ef942c07ead25edc002e47f30b0cb1515',
+          'd12aa12109133be7e30e4ff4b2139a606d94d07a70c98e1dc94f4f463acfcafa',
     ),
   ),
   'push_up': _ArtworkRegistration(
@@ -5348,7 +5362,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/reverse_barbell_curl.webp',
       sha256:
-          'fc8f1d5046dff773ab83832cb3534945ae2cfe906abd04fa55ed3d395775a04d',
+          'ffffaed562f37d27b8031541e7dfc8f44e2d39b2073e976f48264956edc516da',
     ),
   ),
   'reverse_barbell_wrist_curl': _ArtworkRegistration(
@@ -5432,7 +5446,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/reverse_pushdown.webp',
       sha256:
-          '1c258400c46d3b97d7f4c40bc437e00808e3269b8bed17f91c0ed431719893de',
+          'eeac723e7dffeee77072452bedfd02b6c933724909cb112b108c7a85df089528',
     ),
   ),
   'ring_dip': _ArtworkRegistration(
@@ -5462,7 +5476,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/ring_l_sit.webp',
       sha256:
-          '81376e5c50862d08b92baf3b2f3cc0242475986a656dfe6fccba298d9f5ad398',
+          'facbfd22553aaaa1accab4db16045ab868b08419e3068b932b18f470e7a98154',
     ),
   ),
   'ring_pull_up': _ArtworkRegistration(
@@ -5485,6 +5499,20 @@ const _artwork = <String, _ArtworkRegistration>{
           '09a7ea657f0447a7bda246d30e56090aeafaf51ef8b881ec5f84423de74cbe99',
     ),
   ),
+  'ring_support_hold': _ArtworkRegistration(
+    revision: 1,
+    equipmentKind: 'bodyweight',
+    facets: {
+      'arm_position': 'straight',
+      'contraction': 'isometric',
+      'support': 'rings',
+    },
+    artwork: CatalogExerciseArtwork(
+      asset: 'assets/exercise_artwork/images/ring_support_hold.webp',
+      sha256:
+          '0b6a29ed72425fa6fe31e0171ae676fbde9a0c1c51c7db4afd9459803ece44e2',
+    ),
+  ),
   'roller_thoracic_extension': _ArtworkRegistration(
     revision: 1,
     equipmentKind: 'bodyweight',
@@ -5492,7 +5520,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/roller_thoracic_extension.webp',
       sha256:
-          '8c09ccc2b67967cd26e0747c7b1ae59842c78e6b8184d3e7f7e2bba29d0b5b20',
+          '7c02ca7dc618a919bb7e37f516b46038827414bb7ed5f560d8450ebe1c41aca3',
     ),
   ),
   'rope_ascent': _ArtworkRegistration(
@@ -5502,7 +5530,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/rope_ascent.webp',
       sha256:
-          'c9709ace87e64a7ebc9c817c7eb62b1d1a32d17040be86d4f72c6d8a571092d6',
+          '712ad46404afe0985e12f262f580103bbf7200dca18263854c517ed9f919a0ea',
     ),
   ),
   'rope_face_pull': _ArtworkRegistration(
@@ -5512,7 +5540,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/rope_face_pull.webp',
       sha256:
-          '8ba0a4b9c853f13c0959e8c3b8462756fabe9e65eea026af69caf1f619877ac8',
+          'cdf402422eb1c5b50e8c85a6c90298585f1d8c7acf9321132e24efe80827205d',
     ),
   ),
   'rope_hammer_curl': _ArtworkRegistration(
@@ -5566,7 +5594,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/rope_straight_arm_pulldown.webp',
       sha256:
-          '3a3fcfb55794f0a34e00dfd540c2ec38bb552c038cd488af86d5c1b887ded9fe',
+          '82a2fd285b113f9c67ab0e74e9e9b274baa7371e26007fb7de1115866d9ba38d',
     ),
   ),
   'rowing_ergometer': _ArtworkRegistration(
@@ -5643,6 +5671,22 @@ const _artwork = <String, _ArtworkRegistration>{
           '864571e61b631c070c3f54da982601d4758b064b1784a90ad2e0f2a57f7ca48b',
     ),
   ),
+  'seated_ankle_pump': _ArtworkRegistration(
+    revision: 1,
+    equipmentKind: 'bodyweight',
+    facets: {
+      'knee_position': 'straight',
+      'laterality': 'unilateral',
+      'leg_support': 'extended_off_floor',
+      'position': 'seated',
+      'support': 'chair',
+    },
+    artwork: CatalogExerciseArtwork(
+      asset: 'assets/exercise_artwork/images/seated_ankle_pump.webp',
+      sha256:
+          'a992da6cf716d767bedf697f57d4f1431acb1fa7f86b5782bc357920c4220dca',
+    ),
+  ),
   'seated_back_supported_leg_press': _ArtworkRegistration(
     revision: 1,
     equipmentKind: 'machine',
@@ -5652,6 +5696,23 @@ const _artwork = <String, _ArtworkRegistration>{
           'assets/exercise_artwork/images/seated_back_supported_leg_press.webp',
       sha256:
           'f41fa9f8eb86c226326868a38709e8000307be004a53ef115545c80126ca77ee',
+    ),
+  ),
+  'seated_band_ankle_plantarflexion': _ArtworkRegistration(
+    revision: 1,
+    equipmentKind: 'band',
+    facets: {
+      'knee_position': 'straight',
+      'laterality': 'unilateral',
+      'load_mode': 'band_resistance',
+      'position': 'seated',
+      'support': 'floor',
+    },
+    artwork: CatalogExerciseArtwork(
+      asset:
+          'assets/exercise_artwork/images/seated_band_ankle_plantarflexion.webp',
+      sha256:
+          '8f6b1ba85375f7605a81becae6678774f3f606cb271f0be1512168242f105581',
     ),
   ),
   'seated_band_chest_press': _ArtworkRegistration(
@@ -5676,7 +5737,7 @@ const _artwork = <String, _ArtworkRegistration>{
       asset:
           'assets/exercise_artwork/images/seated_band_hip_internal_rotation.webp',
       sha256:
-          '5affe85af507d1698f336da5600e07f9fd1b6165b2b66ccec5591cd412d26ddd',
+          'af53cb7a530df76076999e11b9802fa81583845cd8c0924fae3d72d2f59ae690',
     ),
   ),
   'seated_band_leg_curl': _ArtworkRegistration(
@@ -5987,6 +6048,21 @@ const _artwork = <String, _ArtworkRegistration>{
           '2e4807a5383b99725fc1886b236d3be7c39721fc01fdb183185de88f138f6ed8',
     ),
   ),
+  'seated_knee_extension_unloaded': _ArtworkRegistration(
+    revision: 1,
+    equipmentKind: 'bodyweight',
+    facets: {
+      'laterality': 'unilateral',
+      'position': 'seated',
+      'support': 'chair',
+    },
+    artwork: CatalogExerciseArtwork(
+      asset:
+          'assets/exercise_artwork/images/seated_knee_extension_unloaded.webp',
+      sha256:
+          'b971638b501933b62fb7321de62aac7ed7a48fe644a62647db78315a071244a9',
+    ),
+  ),
   'seated_leg_curl': _ArtworkRegistration(
     revision: 1,
     equipmentKind: 'machine',
@@ -6007,6 +6083,35 @@ const _artwork = <String, _ArtworkRegistration>{
           '33f5800d3bac937b52e054fc9eb44dfac08e25576dd73b9e9a16ef23d56ccabd',
     ),
   ),
+  'seated_marching': _ArtworkRegistration(
+    revision: 1,
+    equipmentKind: 'bodyweight',
+    facets: {
+      'alternation': 'alternating',
+      'knee_position': 'bent',
+      'position': 'seated',
+      'support': 'chair',
+    },
+    artwork: CatalogExerciseArtwork(
+      asset: 'assets/exercise_artwork/images/seated_marching.webp',
+      sha256:
+          'd3e6ac458540dc416e73622c2df2ef05bc4b5e933ddda6d003cf44a9b52514ec',
+    ),
+  ),
+  'seated_side_reach': _ArtworkRegistration(
+    revision: 1,
+    equipmentKind: 'bodyweight',
+    facets: {
+      'alternation': 'alternating',
+      'position': 'seated',
+      'support': 'chair',
+    },
+    artwork: CatalogExerciseArtwork(
+      asset: 'assets/exercise_artwork/images/seated_side_reach.webp',
+      sha256:
+          '1e2b3140fed268dd545fa4567e5a06b34e2a08ed1d7a28ec0e7340af3f2ad452',
+    ),
+  ),
   'seated_ski_ergometer': _ArtworkRegistration(
     revision: 1,
     equipmentKind: 'cardio_machine',
@@ -6014,7 +6119,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/seated_ski_ergometer.webp',
       sha256:
-          '71b160c088d8dc4b0e49ae3b98dd81d6131282081f741592138d91aa4ae8c403',
+          '1393a7c4cc14f963bf8a6272b238efbed763d01c8349f10d0fbd4743de7717b0',
     ),
   ),
   'seated_strap_calf_stretch': _ArtworkRegistration(
@@ -6044,7 +6149,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/side_lying_clamshell.webp',
       sha256:
-          'a7aa8154e603784acbcfafabcc8a5da99eb17f0dbe9f7ec7cfca2f2a44aa8673',
+          '76bfa34804f3a87ff26b3caf629017e957fd4ec56ec121a7df1a93a89a4ba91e',
     ),
   ),
   'side_lying_external_rotation': _ArtworkRegistration(
@@ -6064,7 +6169,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/side_lying_hip_abduction.webp',
       sha256:
-          'f0e2e4d186f1e3a2b643ca4da17b6969aba63c25e6935a705b204938800e01f8',
+          'c35866eee1c12417cbd83aa78e04398fe668202ef34c1fc3a9ed5a27e19f0463',
     ),
   ),
   'side_lying_hip_adduction': _ArtworkRegistration(
@@ -6154,7 +6259,7 @@ const _artwork = <String, _ArtworkRegistration>{
       asset:
           'assets/exercise_artwork/images/single_arm_cable_overhead_extension.webp',
       sha256:
-          'e7a0b0edfef6869c226792556267f82c8ff7dc70d1b5e784342450036eb95076',
+          'bff2f5229d106a8854ed1d1445dc2a4c6a419daad5d5501600a42bf76f5478d0',
     ),
   ),
   'single_arm_cable_row': _ArtworkRegistration(
@@ -6179,7 +6284,7 @@ const _artwork = <String, _ArtworkRegistration>{
       asset:
           'assets/exercise_artwork/images/single_arm_decline_dumbbell_press.webp',
       sha256:
-          '631c093fe8999b5a4bbd4115d4098bf3bcae44d82dfb68e6686c478a3530bf73',
+          '2ebf72f50960e68443a8097e2b0b9b4f649fe64e9e30cdc4867214cf461b8250',
     ),
   ),
   'single_arm_dumbbell_bench_press': _ArtworkRegistration(
@@ -6289,7 +6394,7 @@ const _artwork = <String, _ArtworkRegistration>{
       asset:
           'assets/exercise_artwork/images/single_arm_kettlebell_bottoms_up_press.webp',
       sha256:
-          '166fa60fdcca33a3519ffecf2945506796557ef796e3f5f6cabc6b3be9b4cc00',
+          'b9845454f32ba3ae56117bdd7f67192b1244998555c3774b1041ffa204dfd68b',
     ),
   ),
   'single_arm_kettlebell_clean': _ArtworkRegistration(
@@ -6299,7 +6404,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/single_arm_kettlebell_clean.webp',
       sha256:
-          '5b3a0b3cae8704d1bc3bb22705f3654783e0681090dc08ea2f3885d5d87169ad',
+          '3d2ec8bbac2df7d006275b60d87357b7742b8865def75fec95faffd48dff0be0',
     ),
   ),
   'single_arm_kettlebell_floor_press': _ArtworkRegistration(
@@ -6365,7 +6470,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/single_arm_landmine_row.webp',
       sha256:
-          '10b885ed1ad9056eb16367fb5e006e85edc6dd1b054da036dd00d90b05b0d09a',
+          '47075a8bf1d7652d1441427b3d81ea2723c093a19a9809b251555dafc7080c3c',
     ),
   ),
   'single_arm_machine_row': _ArtworkRegistration(
@@ -6440,7 +6545,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/single_handle_pushdown.webp',
       sha256:
-          '27e1d062b5a559b1c408d669f7b581257657fd084fe2da632db1989d2cd85890',
+          '68dbae66f9e78f7257e3a904dc9a1a8687dc5142fe6c025187b1594b8209f746',
     ),
   ),
   'single_kettlebell_clean_and_jerk': _ArtworkRegistration(
@@ -6503,7 +6608,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/single_leg_extension.webp',
       sha256:
-          '0687ece6e1c30916bc82c0d33a5a3798a209d99de1c0b90bbfa3e5218e5811d8',
+          'dbd8c68e2cf689fbaa26574d8cbf700f5a04177eac6a560f00fc607912a59561',
     ),
   ),
   'single_leg_glute_bridge': _ArtworkRegistration(
@@ -6543,7 +6648,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/single_leg_press.webp',
       sha256:
-          'b95deb2e8279037e4846932fdd7b7f9cbd3ab83564ee77b560bcf2cf77d1f641',
+          '1d28d351f1dc62c33813619bea9d62cfa5ecc7ca4054830c7658cc196409722c',
     ),
   ),
   'single_leg_prone_machine_curl': _ArtworkRegistration(
@@ -6554,7 +6659,7 @@ const _artwork = <String, _ArtworkRegistration>{
       asset:
           'assets/exercise_artwork/images/single_leg_prone_machine_curl.webp',
       sha256:
-          'ff3532e89323e3c33d61648179e4255c5ba32c5fad439497171bfee6a7e33ada',
+          'ede84ded3f8455143b7a55f811201d02029a0364c5b91efe2fe99e6afb998c7f',
     ),
   ),
   'single_leg_rdl': _ArtworkRegistration(
@@ -6564,7 +6669,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/single_leg_rdl.webp',
       sha256:
-          '025367cbf4397b9c69db5bdb047cd6254cb5f6ef4cf06edcf6950179cab04fdd',
+          '2cbef2cab8578df0de702275fe04394550bc3506d02b1a71d831b96ea9a5aac4',
     ),
   ),
   'single_leg_seated_calf_raise': _ArtworkRegistration(
@@ -6587,6 +6692,16 @@ const _artwork = <String, _ArtworkRegistration>{
           '9d452f366d6219196277cda490934b6eae151b585354009f892b483a3379fba9',
     ),
   ),
+  'sit_to_stand': _ArtworkRegistration(
+    revision: 1,
+    equipmentKind: 'bodyweight',
+    facets: {'support': 'chair'},
+    artwork: CatalogExerciseArtwork(
+      asset: 'assets/exercise_artwork/images/sit_to_stand.webp',
+      sha256:
+          'c8cc469fad45b2f4c356315cce510150a8fe48f9f87348209d4576540be3fd20',
+    ),
+  ),
   'ski_ergometer': _ArtworkRegistration(
     revision: 1,
     equipmentKind: 'cardio_machine',
@@ -6594,7 +6709,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/ski_ergometer.webp',
       sha256:
-          '9f7ce8dc1b48f1f25f020a82387726a184bfa12a1bceff2243108fbb95275727',
+          'cc5512585156cd70cd5eff51e322e9266423b236a5c609852b8251f7f5978cc8',
     ),
   ),
   'sled_leg_press': _ArtworkRegistration(
@@ -6724,7 +6839,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/smith_decline_press.webp',
       sha256:
-          'a6e016942d993d0916e253f9fde9e88336468ff760fe68b05b5e3cdd2157eed4',
+          '70b7722fe7144b3dec277b8a5b5f53bc51bccb881f2f10d85afcdf81da051112',
     ),
   ),
   'smith_flat_press': _ArtworkRegistration(
@@ -6754,7 +6869,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/smith_hip_thrust.webp',
       sha256:
-          '8ed46302889527c06b6a993570671d9baa980564f82343f16a6d5825b90f505d',
+          '6dcbf82b3b036c7697181e2ba6f0bdfae4689dc39bd7f7945d96b78f6ad90bb1',
     ),
   ),
   'smith_incline_press': _ArtworkRegistration(
@@ -6774,7 +6889,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/smith_rdl.webp',
       sha256:
-          '941adbe4361d458d54f556c60db08c3e29fcae16a50b6eff684b67d03867fefb',
+          'bbb140a5b83b92d22ad5eb17f7c51f2cbd97f20e0da4aecf38f5af6dc4740ed6',
     ),
   ),
   'smith_reverse_lunge': _ArtworkRegistration(
@@ -6794,7 +6909,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/smith_row.webp',
       sha256:
-          '24f4ae7abd65d3a58da505b7a199d29e9bbf80cc6d657c12060bef0c122df717',
+          '2132f230daa7786327433d1d853f626cd4b922b6e1abdd9ea1921bd030c1f51f',
     ),
   ),
   'smith_shoulder_press': _ArtworkRegistration(
@@ -6844,7 +6959,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/smith_step_up.webp',
       sha256:
-          '11b5c29b0a37ba5d3b61d0b8a23bee6fbc401af030b0195bc8e3f8acb471f200',
+          'a29cc00bff79f78a9dcb5376e45bd8f80b1f62f81fdb6c0dda105add8677a27c',
     ),
   ),
   'smith_upright_row': _ArtworkRegistration(
@@ -7000,7 +7115,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/standing_band_hip_flexion.webp',
       sha256:
-          '684c6af066136d3f0eb4168ef8fc403a9357cfffff65896f682f597d8d2422ea',
+          '0b9d8995750da9e0b0aa438faeb4b5c96f8c67a5d9c04f8416283e82aaaed840',
     ),
   ),
   'standing_band_shoulder_press': _ArtworkRegistration(
@@ -7147,7 +7262,23 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/standing_hip_circle.webp',
       sha256:
-          'ea204868aaf6335571f9c9649a662d184b2dcfe0d78fd31aef6b901eaca2ff74',
+          '5ad7457f8e12b40bfeba8fed463df30e21537c514ccd34b6ab2c8b23d019554f',
+    ),
+  ),
+  'standing_hip_extension_supported': _ArtworkRegistration(
+    revision: 1,
+    equipmentKind: 'bodyweight',
+    facets: {
+      'knee_position': 'straight',
+      'laterality': 'unilateral',
+      'position': 'standing',
+      'support': 'chair',
+    },
+    artwork: CatalogExerciseArtwork(
+      asset:
+          'assets/exercise_artwork/images/standing_hip_extension_supported.webp',
+      sha256:
+          'f0067f00a41c741214436fde98809eccc78eb3c00d53a9c4a480d01d9736ac14',
     ),
   ),
   'standing_inchworm': _ArtworkRegistration(
@@ -7177,7 +7308,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/standing_leg_curl.webp',
       sha256:
-          'cc71a912432c8979c104f314fa0a74573ab575b481562a10451afa4c63a99179',
+          '216d66f8f2a4b66c73bbac2aed8820051f77b39c5e65d24258466640904697e2',
     ),
   ),
   'standing_machine_calf_raise': _ArtworkRegistration(
@@ -7484,6 +7615,21 @@ const _artwork = <String, _ArtworkRegistration>{
           'a6561e0335d986f4922a22fac2d3512e059ba9c76ddb04669b86e193db6eac6a',
     ),
   ),
+  'supported_single_leg_stand': _ArtworkRegistration(
+    revision: 1,
+    equipmentKind: 'bodyweight',
+    facets: {
+      'contraction': 'isometric',
+      'laterality': 'unilateral',
+      'position': 'standing',
+      'support': 'wall',
+    },
+    artwork: CatalogExerciseArtwork(
+      asset: 'assets/exercise_artwork/images/supported_single_leg_stand.webp',
+      sha256:
+          'aa0906c715ad7d535a998f20dc41e1a249fa0f84c7ac055c098d1367238ce096',
+    ),
+  ),
   'suspension_biceps_curl': _ArtworkRegistration(
     revision: 1,
     equipmentKind: 'bodyweight',
@@ -7505,7 +7651,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/suspension_body_saw.webp',
       sha256:
-          'f9e746aeb7dc8d034cddba060c4ba2b8b7fa621f5f5d9aa46f0f1e5494e361aa',
+          '0b839635805bef88cf3f1a63de6681fb9f7d29ce554d925dd17c36e2075b2396',
     ),
   ),
   'suspension_chest_fly': _ArtworkRegistration(
@@ -7577,7 +7723,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/suspension_pike.webp',
       sha256:
-          'c88726ff5f274a065c1f6ca8aea55aaac4ef95664c40839aa8017dbf055406cb',
+          '59079559e611d8407b76343d99415914688243a2bd4e2282717a0dd29577111d',
     ),
   ),
   'suspension_power_pull': _ArtworkRegistration(
@@ -7632,7 +7778,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/suspension_triceps_extension.webp',
       sha256:
-          '2f16d32551e53fb641e8ab95ff12f84ffdbd634ca72a48998c6efd143599e0b7',
+          'ccd32b7c7f0a3ac5f15e567eb2c12b7406ddf88d8cd4e52f4d824b1c370b20e9',
     ),
   ),
   'swimming': _ArtworkRegistration(
@@ -7642,7 +7788,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/swimming.webp',
       sha256:
-          '3554a74370cc0597fcd50e84cf14f6aece61043afe1563d1f500865a9513b60b',
+          '778872f62302841ce4ae61ff192b0f7f83b76e389955c07a159aab3e3caf5fa2',
     ),
   ),
   't_bar_row': _ArtworkRegistration(
@@ -7652,7 +7798,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/t_bar_row.webp',
       sha256:
-          '88b85d666faf68c32d8ea94d57a573b67e3c2dcb64df597e44e3825a7c20b764',
+          'da16cb46cafce53b3ba49f61439a8cba757d649b255ae4684e5309c473029ff5',
     ),
   ),
   'tall_clean': _ArtworkRegistration(
@@ -7672,7 +7818,21 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/tire_flip.webp',
       sha256:
-          '2554c8f17226056fe399af6d95b5f45187871758ed16b00718b27fd73f32c357',
+          '81c7abd5e3257cfd0ca7b6acefedb1c830585d2b75e93552f0a6d133fc329ea7',
+    ),
+  ),
+  'towel_curls': _ArtworkRegistration(
+    revision: 1,
+    equipmentKind: 'bodyweight',
+    facets: {
+      'laterality': 'unilateral',
+      'position': 'seated',
+      'support': 'chair',
+    },
+    artwork: CatalogExerciseArtwork(
+      asset: 'assets/exercise_artwork/images/towel_curls.webp',
+      sha256:
+          'a8f7bd9486da69935b23b97194c87200e2f360fae89da1bd427cf2f16ad01535',
     ),
   ),
   'trap_bar_deadlift': _ArtworkRegistration(
@@ -7702,7 +7862,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/trap_bar_row.webp',
       sha256:
-          'f93006dd21c8f81c62ee379f7b923cc2d345ba3c03fd17e8a72669212673d1fe',
+          '896913b6df58254cfb1b0e7a3ece2e8635815214f353c594178b5256e55c574b',
     ),
   ),
   'trap_bar_shrug': _ArtworkRegistration(
@@ -7808,7 +7968,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/unloaded_ankle_circle.webp',
       sha256:
-          '5f5d65a6e620412da905620c7519ad3c37ef4ed022551c8ab44dadc7b02510fa',
+          '38ebd3632e648ca05fcd095929f9b401374fe3ea23f3bd07ae8fc38c216436f2',
     ),
   ),
   'unloaded_russian_twist': _ArtworkRegistration(
@@ -7878,7 +8038,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/wall_handstand_push_up.webp',
       sha256:
-          '03c833dd1786c791a0d984e03ac9a26372bb9a6790e7c9b5f5054d828d1d5477',
+          'e4f6bbcb48614d67f35e613e413b47eb45d6230693a8977ed18ab961d08ce8f1',
     ),
   ),
   'wall_limited_ab_wheel': _ArtworkRegistration(
@@ -7888,7 +8048,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/wall_limited_ab_wheel.webp',
       sha256:
-          '8ef8a056c95ed0aaac8ae28eb0ef6cd0a8b3d824d61a757fddb43a051475fb8c',
+          '5bfeeffde312d0a215702cf057c8a2cc739f85f9c83d967e318e26612ee11aeb',
     ),
   ),
   'wall_push_up': _ArtworkRegistration(
@@ -8052,7 +8212,7 @@ const _artwork = <String, _ArtworkRegistration>{
     artwork: CatalogExerciseArtwork(
       asset: 'assets/exercise_artwork/images/yoke_carry.webp',
       sha256:
-          '53bd9edab9688346720eae406624ac21114d0327ece1817fca1ccd811bebe20f',
+          '2506f35c29b2f01e3d2587eb9c85e0660f69a0538796219688a34f526e4f2fbb',
     ),
   ),
   'zercher_squat': _ArtworkRegistration(

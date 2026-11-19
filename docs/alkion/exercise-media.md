@@ -30,7 +30,13 @@ licensing does not authorize a public push or establish muscle evidence.
 
 `app/lib/catalog/catalog_artwork.dart` resolves an image only when the catalog
 variant has the exact registered key, revision, equipment and complete facet
-map. Missing or additional facets, changed equipment or revision, unknown
+map in the selected artwork edition. Settings → Artwork reuses the existing
+Male/Female preference; it describes the illustrations, not profile gender.
+Rows, navigation previews and an already open details sheet update when it
+changes, preserving exercise choices, favorites and history. A missing selected
+edition never substitutes an image from the other edition.
+
+Missing or additional facets, changed equipment or revision, unknown
 variants, and custom choices fail closed; names, family IDs and fuzzy matches
 do not participate. The catalog still supplies exercise identity and behavior.
 
@@ -45,13 +51,17 @@ preserving exercise selection and detail actions.
 
 The preparation tool uses Pillow only outside the app runtime and does not
 download sources or modify images. From the Alkion repository root, verify the
-manifest, files and generated registrations with:
+male/female manifests, files and generated registrations with:
 
 ```sh
 python3 app/tool/prepare_exercise_artwork.py
 ```
 
-Regenerate registrations with `--write`. To reconcile against an explicit
+Both editions are bundled for offline use. Their separate generated Dart tables
+contain reviewed registrations only. Regenerate both with `--write`;
+`--manifest app/assets/exercise_artwork/female-manifest.json` limits validation
+and generation to that edition. The default validates both editions before
+writing either table. To reconcile against an explicit
 catalog file and write a coverage receipt, use:
 
 ```sh
@@ -66,6 +76,169 @@ keys, not local source paths. Verification checks manifest semantics, image
 digests, lossless WebP format, dimensions, opaque still-image properties, exact
 asset inventory and generated registrations. These checks do not grant artwork
 rights or qualify visual appearance on a device.
+
+## Numbered local review library
+
+Open [`tools/artwork-library/index.html`](../../tools/artwork-library/index.html)
+directly in a browser. It works offline through `file://`; no CDN or app setting
+is required. The page uses the bundled fonts and
+selected image files. Search by exact library number (with an optional `#`) or
+part of an English catalog name. Select an image to inspect it, switch editions,
+or open its full-size file. Escape closes inspection; Previous/Next and the left
+and right arrow keys move through the displayed results in their current order.
+
+**Show → Latest regenerated** limits the current edition to the reviewed
+regeneration cohort (source illustrations 2021–2360: 77 male and 93 female
+selections). **Order → Newest artwork first** sorts by descending source
+illustration, with exercise number breaking ties. The default remains all images
+in exercise-number order. Search composes with both controls. Edition comparison
+keeps the selected exercise; navigation is disabled when its counterpart is
+outside the filtered results. The URL preserves edition, Show, Order, search and
+inspection, including a [latest/newest view](../../tools/artwork-library/index.html#edition=male&scope=latest&order=newest).
+
+Use **Mark for regen** on a card or in inspection to flag the current edition.
+Male and female marks are separate; pressing a marked control removes its mark.
+To save each change automatically to a JSON file, run the local helper from the
+repository root with an explicit queue path outside this public repository
+(the parent directory must already exist):
+
+```sh
+python3 app/tool/serve_artwork_library.py --queue /path/to/regeneration-queue.json --port 8766
+```
+
+Open `http://127.0.0.1:8766/tools/artwork-library/`. The helper binds only to
+loopback and initializes an empty file only when absent. **Saved in queue file**
+confirms the latest acknowledged file contents; failures show **Save not
+confirmed** and a Retry action. A lost response may have followed a successful
+write: the viewer reconciles the file, and retrying the same desired change is
+idempotent. Concurrent tabs update one mark at a time without replacing each
+other's entries. Unknown, corrupt or newer queue files are preserved and block
+writes until the owner resolves them. A regular static HTTP server can display
+the gallery, but marking requires this helper; its unavailable API shows Retry.
+
+The queue format is `alkion-artwork-regeneration-v1`, with an `entries` array.
+Each entry records the stable `number`, `variant_key`, `edition`, catalog variant
+`revision`, image `sha256`, source `illustration`, `source_sheet_sha256` and
+`source_cell`. These are the selected image's provenance at marking time.
+Later artwork revisions retain that snapshot and stable identity; retired
+reserved identities remain in the queue. Removing then marking again captures
+the new selection. No source-sheet paths or image generation are included.
+
+Through `file://`, marks persist in this browser's local storage and the status
+says **Browser only**. **Download regen JSON** requests a file download; save it
+through the browser, and download again after changing marks. The viewer cannot
+confirm the browser's final save location. Browser-only marks are separate from
+the helper's file and are not automatically imported. The same download button
+also provides a backup of the last confirmed helper queue. Neither mode starts
+regeneration or changes the artwork.
+
+The permanent number comes from
+`app/assets/exercise_artwork/library-numbers.json`. Both editions share it;
+renames, source replacements and catalog ordering do not change it. Retired
+keys keep their reservations and new keys append after the registry high-water
+mark. The source illustration number is separate and appears only in inspection
+provenance. A link such as `index.html#edition=female&exercise=1` reopens that
+exercise and edition. Switching editions keeps the selected exercise and grid
+position.
+
+Artwork revisions and source replacements **do not rewrite the registry**. For
+an approved catalog addition, first save the existing public reservations, then
+use the preparation module’s pure `reconcile_registry` helper with the complete
+current catalog key list. It retains retired keys and appends genuinely new keys
+above the high-water mark:
+
+```sh
+cp app/assets/exercise_artwork/library-numbers.json /tmp/library-numbers.previous.json
+python3 - <<'PYTHON'
+import json
+from pathlib import Path
+import sys
+sys.path.insert(0, "app/tool")
+from prepare_exercise_artwork import reconcile_registry
+
+path = Path("app/assets/exercise_artwork/library-numbers.json")
+previous = json.loads(Path("/tmp/library-numbers.previous.json").read_text())
+catalog = json.loads(Path("app/assets/catalog_trial/catalog.dev.json").read_text())
+updated = reconcile_registry(previous, [v["key"] for v in catalog["variants"]], previous=previous)
+if updated != previous:
+    path.write_text(json.dumps(updated, indent=2) + "\n")
+PYTHON
+```
+
+After updating the approved manifests and selected assets for those keys, verify
+both editions against that saved registry. The existing `--previous-registry`
+option rejects removed/reassigned reservations, compaction and a decreased
+high-water mark:
+
+```sh
+python3 app/tool/prepare_exercise_artwork.py \
+  --catalog app/assets/catalog_trial/catalog.dev.json \
+  --previous-registry /tmp/library-numbers.previous.json
+python3 app/tool/prepare_exercise_artwork.py \
+  --manifest app/assets/exercise_artwork/female-manifest.json \
+  --catalog app/assets/catalog_trial/catalog.dev.json \
+  --previous-registry /tmp/library-numbers.previous.json
+```
+
+The page consumes `manifest.json` and `female-manifest.json` through one generated
+`data.js`. The generator reuses the app preparation validator, requires exact
+catalog revision/equipment/facet admission and complete current coverage in both
+editions, and checks each number against the registry. An unavailable edition
+never substitutes the other edition. Review flags remain visible: **Agreed
+defect**, **Needs manual review**, and **Secondary review cleared**. An unflagged
+image is not a certification of technique or anatomical correctness.
+
+From the repository root, regenerate after an approved selection/catalog change:
+
+```sh
+python3 app/tool/prepare_artwork_library.py --write
+python3 app/tool/prepare_artwork_library.py
+```
+
+The default catalog is the explicitly named
+`app/assets/catalog_trial/catalog.dev.json`; use `--catalog /path/to/catalog.json`
+for another explicit input. The page data is public metadata only; it contains no
+source-sheet paths. Verification fails on missing or mismatched assets, identities,
+numbers, flags or coverage. The explicit
+`tools/artwork-library/latest-regeneration.json` declares the cohort id, label,
+source illustration bounds and expected edition counts. The generator publishes
+it into page data and rejects inconsistent counts or invalid metadata. Update it
+only with an approved regeneration; queue marks never determine membership.
+An explicit `--latest-regeneration /path/to/metadata.json` can select another
+declaration for verification. No artwork is copied or changed by this generator.
+
+Generated image URLs include the full selected SHA-256 as `?v=…`, so replacing
+an image at the same filename requests its new revision for thumbnails,
+inspection and full-size links. The local helper sends `Cache-Control: no-cache`
+for review HTML, data, scripts and styles, allowing revalidation on reload;
+queue API responses remain `no-store`. After updating this helper code, restart
+the helper and reload the page to receive those headers.
+
+These selections are a **local review candidate**. Existing asset notices retain
+their existing scope; the review page does not broaden any license grant or
+approve publication of newly selected artwork. Its footer links to the existing
+media and asset notices.
+
+Focused checks:
+
+```sh
+python3 -m unittest discover -s app/tool -p test_prepare_artwork_library.py
+python3 -m unittest discover -s app/tool -p test_serve_artwork_library.py
+node tools/artwork-library/test-library.cjs
+node tools/artwork-library/test-regeneration.cjs
+```
+
+The browser check requires an existing Playwright installation with Chromium;
+installing it is optional development setup, not a gallery dependency. If needed,
+set `NODE_PATH` to that installation's module directory and `BROWSER_EXECUTABLE`
+to an explicitly selected Chromium executable. It opens a disposable `file://`
+fixture using the catalog names and baseline files, with synthetic edition URLs;
+it checks controls and error handling, not final artwork correctness. It retains
+its fixture and desktop/narrow screenshots in a temporary directory for review.
+The regeneration check starts a fresh loopback helper on an available port and
+uses only a temporary queue. It verifies real file persistence, edition-specific
+reload/unmark, concurrent tabs, provenance snapshots, idempotent retry after
+failed/lost responses, JSON download, corrupt-file preservation and narrow UI.
 
 ## Workout Guide movement frames (source only)
 
