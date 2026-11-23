@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
 import 'package:oidc_platform_interface/oidc_platform_interface.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -26,7 +27,26 @@ abstract interface class AnimusBrowserPort {
   });
   Future<void> cancel();
   Future<void> close();
+
+  /// Whether an [authorize] call is outstanding (opened and not yet settled).
+  bool get authorizePending;
+
+  /// Whether the outstanding call's own window has elapsed by the monotonic
+  /// clock or the wall clock. The monotonic clock and Dart timers pause while
+  /// a device is suspended, so the wall clock is the second witness. False
+  /// when no call is outstanding.
+  bool get windowElapsed;
 }
+
+/// The window of one outstanding [SystemAnimusBrowser.authorize] call.
+final class _Window {
+  _Window(this.wall, this.monotonic);
+  final DateTime wall;
+  final Duration monotonic;
+  bool timerFired = false;
+}
+
+final Stopwatch _processClock = Stopwatch()..start();
 
 /// System browser only; no password view, embedded browser, cookies or logging.
 final class SystemAnimusBrowser implements AnimusBrowserPort {
@@ -35,9 +55,13 @@ final class SystemAnimusBrowser implements AnimusBrowserPort {
     OidcAndroidHostApi? android,
     Future<bool> Function(Uri)? launch,
     this.flowTimeout = maxFlowTimeout,
+    @visibleForTesting DateTime Function()? wallClock,
+    @visibleForTesting Duration Function()? monotonicClock,
   }) : assert(flowTimeout > Duration.zero && flowTimeout <= maxFlowTimeout),
        _android = android ?? OidcAndroidHostApi(),
-       _launch = launch;
+       _launch = launch,
+       _wallClock = wallClock ?? DateTime.now,
+       _monotonicClock = monotonicClock ?? (() => _processClock.elapsed);
 
   /// Matches the provider's 300 s ceremony age bound: a password plus a TOTP
   /// fetched from another app must fit, and a longer wait could never succeed.
@@ -47,10 +71,25 @@ final class SystemAnimusBrowser implements AnimusBrowserPort {
   final OidcAndroidHostApi _android;
   final Future<bool> Function(Uri)? _launch;
   final Duration flowTimeout;
+  final DateTime Function() _wallClock;
+  final Duration Function() _monotonicClock;
+  _Window? _window;
   HttpServer? _server;
   Completer<Uri?>? _result;
   int _epoch = 0;
   bool _closed = false;
+
+  @override
+  bool get authorizePending => _window != null;
+
+  @override
+  bool get windowElapsed => _expired(_window);
+
+  bool _expired(_Window? window) =>
+      window != null &&
+      (window.timerFired ||
+          _monotonicClock() - window.monotonic >= flowTimeout ||
+          _wallClock().difference(window.wall) >= flowTimeout);
 
   @override
   Future<Uri?> authorize({
@@ -60,17 +99,29 @@ final class SystemAnimusBrowser implements AnimusBrowserPort {
     if (_closed) return null;
     await cancel();
     final epoch = _epoch;
+    final window = _window = _Window(_wallClock(), _monotonicClock());
+    try {
+      return await _authorize(authorizationUri, redirectUri, epoch, window);
+    } finally {
+      if (identical(_window, window)) _window = null;
+    }
+  }
+
+  Future<Uri?> _authorize(
+    Uri authorizationUri,
+    Uri redirectUri,
+    int epoch,
+    _Window window,
+  ) async {
     if (platform == AnimusPlatform.android) {
       // The plugin reports its own flow timeout as USER_CANCELLED. Alkion owns
       // the bound: this timer fires first (the plugin arms its copy only after
       // opening the tab), and the elapsed check covers a plugin-first race.
-      final elapsed = Stopwatch()..start();
-      var timedOut = false;
       final timer = Timer(flowTimeout, () {
-        timedOut = true;
+        window.timerFired = true;
         unawaited(_android.cancel().catchError((Object _) {}));
       });
-      bool expired() => timedOut || elapsed.elapsed >= flowTimeout;
+      bool expired() => _expired(window);
       try {
         final value = await _android.authorize(
           authorizationUri.toString(),
@@ -112,10 +163,9 @@ final class SystemAnimusBrowser implements AnimusBrowserPort {
       return null;
     }
     _server = server;
-    var timedOut = false;
     final timer = Timer(flowTimeout, () {
       if (!result.isCompleted) {
-        timedOut = true;
+        window.timerFired = true;
         result.complete(null);
       }
       unawaited(server.close(force: true));
@@ -165,7 +215,7 @@ final class SystemAnimusBrowser implements AnimusBrowserPort {
               ));
       if (!launched && !result.isCompleted) result.complete(null);
       final callback = await result.future;
-      if (timedOut && !_closed && epoch == _epoch) {
+      if (_expired(window) && !_closed && epoch == _epoch) {
         throw const AnimusBrowserTimedOut();
       }
       return callback;

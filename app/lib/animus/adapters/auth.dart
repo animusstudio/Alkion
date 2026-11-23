@@ -41,12 +41,15 @@ final class OidcAnimusAuth implements AnimusAuthPort {
     required AnimusSecretStore secrets,
     AnimusBrowserPort? browser,
     http.Client Function()? httpClientFactory,
-  }) : _secrets = secrets,
+    @visibleForTesting Duration signInTimeout = _signInTimeout,
+  }) : _signInBound = signInTimeout,
+       _secrets = secrets,
        _browser =
            browser ?? SystemAnimusBrowser(platform: scope.config.platform),
        _httpClientFactory = httpClientFactory ?? http.Client.new;
 
   final AnimusScope scope;
+  final Duration _signInBound;
   final AnimusSecretStore _secrets;
   final AnimusBrowserPort _browser;
   final http.Client Function() _httpClientFactory;
@@ -74,12 +77,13 @@ final class OidcAnimusAuth implements AnimusAuthPort {
   Future<T> _serialized<T>(
     Future<T> Function(int epoch) action, {
     Duration timeout = _workTimeout,
+    bool signIn = false,
   }) {
     final epoch = _epoch;
     final result = _actions.then((_) async {
       _check(epoch);
       try {
-        return await _interruptible(action(epoch), timeout);
+        return await _interruptible(action(epoch), timeout, signIn: signIn);
       } on AnimusAuthFailure {
         rethrow;
       } on AnimusSecretStoreUnavailable {
@@ -94,7 +98,11 @@ final class OidcAnimusAuth implements AnimusAuthPort {
     return result;
   }
 
-  Future<T> _interruptible<T>(Future<T> future, Duration timeout) =>
+  Future<T> _interruptible<T>(
+    Future<T> future,
+    Duration timeout, {
+    bool signIn = false,
+  }) =>
       Future.any([
         future,
         _interrupted.future.then<T>(
@@ -103,10 +111,20 @@ final class OidcAnimusAuth implements AnimusAuthPort {
       ]).timeout(
         timeout,
         onTimeout: () {
+          // A frozen or suspended process wakes with this bound due before the
+          // browser's own timer ran. Read the browser's state before cleanup:
+          // only a pending call whose own window elapsed is a sign-in that
+          // timed out. A hang elsewhere (discovery, exchange) is unavailable.
+          final timedOut =
+              signIn && _browser.authorizePending && _browser.windowElapsed;
           _fence();
           unawaited(_browser.cancel().catchError((Object _) {}));
           unawaited(_dropManager());
-          throw const AnimusAuthFailure(AnimusAuthFailureKind.unavailable);
+          throw AnimusAuthFailure(
+            timedOut
+                ? AnimusAuthFailureKind.timedOut
+                : AnimusAuthFailureKind.unavailable,
+          );
         },
       );
 
@@ -216,7 +234,16 @@ final class OidcAnimusAuth implements AnimusAuthPort {
   @override
   Future<AnimusAuthSession?> authorize({
     AnimusAuthIntent intent = AnimusAuthIntent.signIn,
-  }) => _serialized((epoch) async {
+  }) => _serialized(
+    (epoch) => _authorize(epoch, intent),
+    timeout: _signInBound,
+    signIn: true,
+  );
+
+  Future<AnimusAuthSession?> _authorize(
+    int epoch,
+    AnimusAuthIntent intent,
+  ) async {
     if (intent == AnimusAuthIntent.createAccount &&
         !scope.config.supportsAccountCreation) {
       throw const AnimusAuthFailure(AnimusAuthFailureKind.unavailable);
@@ -259,7 +286,7 @@ final class OidcAnimusAuth implements AnimusAuthPort {
       return null;
     }
     return _session = _validated(user);
-  }, timeout: _signInTimeout);
+  }
 
   @override
   Future<AnimusAuthSession?> restore() => _serialized((epoch) async {

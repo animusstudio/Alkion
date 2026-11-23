@@ -204,6 +204,15 @@ class FixtureBrowser implements AnimusBrowserPort {
   Object? failure;
   int launches = 0;
   int cancellations = 0;
+
+  /// True while a gated call is outstanding; tests set [elapsed] to model the
+  /// browser's own window having passed.
+  bool pending = false;
+  bool elapsed = false;
+  @override
+  bool get authorizePending => pending;
+  @override
+  bool get windowElapsed => pending && elapsed;
   @override
   Future<Uri?> authorize({
     required Uri authorizationUri,
@@ -212,7 +221,14 @@ class FixtureBrowser implements AnimusBrowserPort {
     launches++;
     lastAuthorization = authorizationUri;
     if (failure != null) throw failure!;
-    if (gate != null) return gate!.future;
+    if (gate != null) {
+      pending = true;
+      try {
+        return await gate!.future;
+      } finally {
+        pending = false;
+      }
+    }
     return callback?.call(authorizationUri, redirectUri) ??
         redirectUri.replace(
           queryParameters: {

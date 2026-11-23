@@ -9,6 +9,8 @@ import 'package:alkion/animus/contracts.dart';
 import 'package:alkion/animus/probe.dart';
 import 'package:alkion/animus/ports.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:logging/logging.dart';
 import 'package:oidc/oidc.dart' show OidcAuthorizeRequest;
 import 'package:oidc_platform_interface/oidc_platform_interface.dart';
@@ -362,6 +364,163 @@ void main() {
       await controller.close();
       controller.dispose();
     }
+  });
+
+  group('outer sign-in bound', () {
+    const bound = Duration(milliseconds: 150);
+    OidcAnimusAuth bounded(AnimusBrowserPort browser) => OidcAnimusAuth(
+      scope: fixture.scope,
+      secrets: fixture.secrets,
+      browser: browser,
+      httpClientFactory: fixture.client,
+      signInTimeout: bound,
+    );
+    Matcher failure(AnimusAuthFailureKind kind) =>
+        throwsA(isA<AnimusAuthFailure>().having((f) => f.kind, 'kind', kind));
+
+    test('frozen past the bound with the browser window elapsed is timed '
+        'out, with the usual clean-up', () async {
+      fixture.browser
+        ..gate = Completer<Uri?>()
+        ..elapsed = true;
+      final bounded0 = bounded(fixture.browser);
+      await expectLater(
+        bounded0.authorize(),
+        failure(AnimusAuthFailureKind.timedOut),
+      );
+      expect(fixture.browser.cancellations, greaterThan(0));
+      expect(fixture.exchanges, 0);
+      expect(fixture.secrets.values, isEmpty);
+      await bounded0.close();
+    });
+
+    test('a browser still inside its window stays unavailable', () async {
+      fixture.browser.gate = Completer<Uri?>();
+      final bounded0 = bounded(fixture.browser);
+      await expectLater(
+        bounded0.authorize(),
+        failure(AnimusAuthFailureKind.unavailable),
+      );
+      await bounded0.close();
+    });
+
+    test('a callback in time then a hung exchange is unavailable', () async {
+      fixture.tokenGate = Completer<void>();
+      final bounded0 = bounded(fixture.browser);
+      await expectLater(
+        bounded0.authorize(),
+        failure(AnimusAuthFailureKind.unavailable),
+      );
+      expect(fixture.exchanges, 1);
+      expect(fixture.secrets.values, isEmpty);
+      fixture.tokenGate!.complete();
+      await bounded0.close();
+    });
+
+    test(
+      'a hang in discovery before the browser opens is unavailable',
+      () async {
+        final hung = Completer<void>();
+        final stalled = OidcAnimusAuth(
+          scope: fixture.scope,
+          secrets: fixture.secrets,
+          browser: fixture.browser,
+          httpClientFactory: () => MockClient((_) async {
+            await hung.future;
+            return http.Response('', 404);
+          }),
+          signInTimeout: bound,
+        );
+        // Even a window that would read as elapsed cannot matter: no call is
+        // outstanding because the browser was never opened.
+        fixture.browser.elapsed = true;
+        await expectLater(
+          stalled.authorize(),
+          failure(AnimusAuthFailureKind.unavailable),
+        );
+        expect(fixture.browser.launches, 0);
+        hung.complete();
+        await stalled.close();
+      },
+    );
+
+    test(
+      'suspended: the wall clock passed the window, the monotonic did not, '
+      'so the outer bound reports timed out and nothing is exchanged',
+      () async {
+        final clock = _Clocks();
+        final android = _HangingAndroid();
+        final browser = SystemAnimusBrowser(
+          platform: AnimusPlatform.android,
+          android: android,
+          wallClock: clock.wall,
+          monotonicClock: clock.monotonic,
+        );
+        final suspended = bounded(browser);
+        final pending = suspended.authorize();
+        final outcome = expectLater(
+          pending,
+          failure(AnimusAuthFailureKind.timedOut),
+        );
+        await android.opened.future;
+        expect(browser.authorizePending, isTrue);
+        expect(browser.windowElapsed, isFalse);
+        clock.wallElapsed = const Duration(seconds: 301);
+        expect(browser.windowElapsed, isTrue);
+        await outcome;
+        expect(fixture.exchanges, 0);
+        expect(fixture.secrets.values, isEmpty);
+        await suspended.close();
+      },
+    );
+
+    test('suspended: the browser\'s own expiry reports timed out for a late '
+        'callback, which is never exchanged', () async {
+      final clock = _Clocks();
+      final android = _HangingAndroid();
+      final browser = SystemAnimusBrowser(
+        platform: AnimusPlatform.android,
+        android: android,
+        wallClock: clock.wall,
+        monotonicClock: clock.monotonic,
+      );
+      final pending = browser.authorize(
+        authorizationUri: Uri.https('identity.example.test', '/authorize'),
+        redirectUri: fixture.scope.config.redirectUri,
+      );
+      final outcome = expectLater(
+        pending,
+        throwsA(isA<AnimusBrowserTimedOut>()),
+      );
+      await android.opened.future;
+      clock.wallElapsed = const Duration(seconds: 300);
+      android.deliver(fixture.scope.config.redirectUri.toString());
+      await outcome;
+      expect(browser.authorizePending, isFalse);
+      expect(browser.windowElapsed, isFalse);
+
+      // Through the adapter: the device suspends while the tab is open and
+      // the callback arrives after resume. No session and no exchange.
+      clock.wallElapsed = Duration.zero;
+      final late = OidcAnimusAuth(
+        scope: fixture.scope,
+        secrets: fixture.secrets,
+        browser: SystemAnimusBrowser(
+          platform: AnimusPlatform.android,
+          android: _SuspendingAndroid(clock),
+          wallClock: clock.wall,
+          monotonicClock: clock.monotonic,
+        ),
+        httpClientFactory: fixture.client,
+      );
+      await expectLater(
+        late.authorize(),
+        failure(AnimusAuthFailureKind.timedOut),
+      );
+      expect(fixture.exchanges, 0);
+      expect(fixture.secrets.values, isEmpty);
+      await late.close();
+    });
   });
 
   group('Disconnect sign-out', () {
@@ -788,6 +947,54 @@ Future<void> _until(bool Function() done) async {
 
 /// Delivers a valid callback after the flow bound and ignores the cancel, as a
 /// provider redirect racing the timeout would.
+class _Clocks {
+  final _wallStart = DateTime.utc(2026, 1, 1);
+  Duration wallElapsed = Duration.zero;
+  Duration monotonicElapsed = Duration.zero;
+  DateTime wall() => _wallStart.add(wallElapsed);
+  Duration monotonic() => monotonicElapsed;
+}
+
+class _SuspendingAndroid extends OidcAndroidHostApi {
+  _SuspendingAndroid(this.clock);
+  final _Clocks clock;
+  @override
+  Future<String?> authorize(
+    String url,
+    String? redirectUri,
+    String? callbackUrlScheme,
+    Map<String, Object?> options,
+  ) async {
+    clock.wallElapsed = const Duration(seconds: 301);
+    final state = Uri.parse(url).queryParameters['state']!;
+    return Uri.parse(redirectUri!)
+        .replace(queryParameters: {'code': 'late-code', 'state': state})
+        .toString();
+  }
+
+  @override
+  Future<void> cancel() async {}
+}
+
+class _HangingAndroid extends OidcAndroidHostApi {
+  final opened = Completer<void>();
+  final _result = Completer<String?>();
+  void deliver(String callback) => _result.complete(callback);
+  @override
+  Future<String?> authorize(
+    String url,
+    String? redirectUri,
+    String? callbackUrlScheme,
+    Map<String, Object?> options,
+  ) {
+    opened.complete();
+    return _result.future;
+  }
+
+  @override
+  Future<void> cancel() async {}
+}
+
 class _LateAndroid extends OidcAndroidHostApi {
   bool delivered = false;
   @override
