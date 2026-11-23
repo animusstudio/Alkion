@@ -12,15 +12,18 @@ Alkion keeps History workouts that use catalog exercises local, because the only
 
 1. Waits for the [legacy store removal](2026-11-23-legacy-store-removal.md) (wave 2) to merge, and for the current Animus LAN follow-ups (including the sign-in timeout fix in `animus/` connection code and the auth flow redesign) to be delivered. This plan does not plan edits to sign-in, authorization, entry or the connection state machine.
    Between that merge and this plan (wave 3) the History send panel shows the existing unsupported state for every workout, because native-only send has no catalog-free workout left to send.
-2. Starts client work only after the server tasks that publish the fixtures bundle are accepted.
+2. Starts client work only after the server's fixture capture task (its T4, the synthetic fixtures bundle) is accepted; the server plan states the same rule.
 3. Rebases onto `main` by merge. Shared ARB files: only `animus*` keys.
 
 ## Decisions
 
 - **One contract.** Remove `alkion-native-workout-send/1` and its capability preflight. The new preflight is the server capability for catalog sets; absent means the workout stays local with one plain reason.
-- **Lossless translation.** A catalog set sends its full selection evidence (exercise, tracking context and revision, variant and binding pins, bundle digest, muscle pin, execution hash, load convention, resistance source) and every typed metric as stored (state, raw text, unit), plus warm-up flag, RIR and set order. No unit conversion, no rounding, no invented time. Source: `CatalogSetEvidence` in `lib/domain/catalog_execution.dart`.
-- **Custom exercises** send as definitions with their measurement profile first, then the workout pins them with acknowledged revisions, the existing dependency order.
-- **Recovery identifiers stay.** `alkion-native-workout-binding/1` (`lib/animus/workout_upload_repository.dart`, read by `lib/animus/remote_recovery_repository.dart`) and `alkion-native-finish-time/1` (written in `lib/session/active_session_controller.dart`, checked in `workout_upload_repository.dart`) are recovery and persisted formats. They stay unchanged: renaming them would orphan stored recovery state and break the unchanged recovery behavior. Only the send contract name changes.
+- **Every exercise is a definition.** The server needs a definition record per block exercise. A catalog exercise is sent as a v2 definition carrying its exact catalog pin; a custom exercise as a v2 definition with its measurement profile, `displayLabel` and `personalGroups` and no pins. Definitions go first, are pinned by acknowledged revision in the workout, as today.
+- **Lossless, thin sets.** The workout carries each distinct selection once (the exact `alkion-catalog-selection` object, strict keys, v1 or v2 shape from `app/lib/domain/catalog_execution.dart`), and each set references it with set number, warm-up flag, RIR and typed metrics `{state, raw, unit}`. No unit conversion or rounding, no invented time.
+- **Normalize first.** The client applies the server finish rules before encoding (done sets only, warm-ups first, sequential numbers, RIR null on warm-ups) and compares the normalized form on read-back, using canonical JSON (`catalogCanonicalJson`), not byte order.
+- **Digests.** `bundleDigest` is the staged-projection digest (`projection_sha256`); the client sends it as stored and never recomputes it from other files.
+- **Persisted contract names.** Rename every persisted use of the native contract: binding `translation` (`workout_upload_repository.dart:32-33`, hashed into the binding id), the frozen selection format (`alkion-native-workout-selection/1`, new `alkion-catalog-workout-selection/1`) and `operation_attempts.translation_version` (`remote_recovery_repository.dart`). A round-trip test covers a binding with the new translation; recovery behavior is unchanged.
+- **Rejections.** The server adds a stable `reason`. On a server without v2 the client keeps its intent and operation ID, says Animus needs an update, and retries the same bytes after the upgrade. Unknown catalog revision and measurement mismatch show the generic "Couldn't send" with the reason under Details.
 - **Same safety model.** Intent committed before discovery, original operation ID and bytes on retry, read-back verification, recovery stop on changed generation, reviewed retry. None of that changes; only the request body and read-back comparison do.
 - **Simple front, details behind.** Profile shows one row ("Connected as X" or "Connect") with Disconnect and a Details toggle. History shows Send, Sent, Try again. Failures collapse to four plain messages: offline, sign in again, wrong account, "Couldn't send. Try again." Account/space, capability, recovery generation, verify, read-back, inventory and reviewed retry live under Details. Recovery review appears only after a failed or uncertain send, under Details.
 - **Wording ownership.** Public English and Italian wording for these panels is set by this plan; Italian is owner-reviewed. German and Spanish follow meaning. No hosts, accounts or private paths appear in text or docs.
@@ -32,13 +35,14 @@ Manual send of one selected workout only: no automatic, bulk or background send,
 ## Acceptance
 
 - **C1** A finished catalog workout with reps/load, duration and custom exercises sends after one confirmation, and read-back matches what was sent (decimal text, RIR null versus 0, units, warm-up, order, pins).
-- **C2** Server without the catalog capability, unknown catalog revision, measurement mismatch or oversize: nothing is sent or the server rejects it; the workout stays local with a plain message; no partial write is left unrecorded.
+- **C2** Server without the catalog capability or v2 versions, unknown catalog revision, measurement mismatch or oversize: nothing is sent or the server rejects it; the workout stays local with a plain message; no partial write is left unrecorded; after a server upgrade the same bytes retry.
 - **C3** Retry and replay use the original operation ID and bytes; a replayed result does not create another workout; a failed read-back keeps "Sent" and offers a retry of the check.
 - **C4** Wrong account/space or revoked grant shows the wrong-account message and sends nothing more.
 - **C5** No native-only send code, tests or fixtures remain; no catalog-free workout can be sent.
 - **C6** Profile shows one status row; Details holds technical state; recovery review is reachable only under Details after a failed send; recovery behavior is unchanged (existing recovery tests pass).
 - **C7** EN, IT, DE and ES texts exist, no raw error text or identifiers shown on the front.
-- **C8** Fixtures are synthetic, captured from a disposable API; a scan finds no owner data, hosts or private paths.
+- **C8** Fixtures are synthetic, captured from a disposable API with a synthetic manifest built from the synthetic test catalog (`app/test/catalog/catalog_fixture.dart`); a scan finds no owner data, hosts, private paths, real catalog digests, variant IDs or labels.
+- **C9** Cases include a warm-up with RIR, a warm-up after working sets, a custom exercise, a v1 or deleted definition refusal and a binding round-trip with the new translation.
 
 ## Tasks
 
@@ -51,7 +55,7 @@ Manual send of one selected workout only: no automatic, bulk or background send,
 | T5 Docs and acceptance | docs | `docs/alkion/animus-workout-upload.md` (rewrite for the new contract, drop the catalog boundary), `animus-connection.md` wording, `acceptance.md` entry, plans guide | all |
 
 ### T2 notes
-- Preflight reads `GET /v1/system/info`; no definition or workout POST before it passes.
+- Preflight reads `GET /v1/system/info` and requires the catalog capability and the v2 per-kind versions; no definition or workout POST before it passes.
 - The translation is a pure function from stored set evidence; it refuses (stays local) a workout with a set missing required metrics or time evidence, as today.
 - Reuse existing `AnimusCommandBytes` budgets (1 MiB wire, canonical budgets per kind).
 - Read-back compares each set's evidence and measurement text, not only counts.
@@ -66,13 +70,10 @@ Manual send of one selected workout only: no automatic, bulk or background send,
 - `make -C app analyze`, then the full suite `make -C app test`, run serially. Existing recovery tests must stay green.
 - Record `command → result` at a commit SHA once run.
 
-## Open owner decisions (recommended default first)
+## Owner decisions (approved 2026-11-23, defaults)
 
-- **OD1** Remove the Verify/Check saved/Change account buttons from the front (default) versus keep one under Details.
-- **OD2** Show recovery review under Details only after a failed send (default) versus always under Details.
-- **OD3** Include a short "what was sent" line (exercises, sets) in the confirm dialog (default) versus the account only.
-- **OD4** Live phone check against a real Animus server is a separate owner GO after both repositories merge.
+Remove Verify, Check saved and Change account from the front; recovery review under Details only after a failed send; a short "what was sent" line in the confirm dialog; live phone check is a separate owner GO after both repositories merge.
 
 ## Task state
 
-T1 to T5: not started. Next: owner approval; then wait for the server plan, the store plan and the LAN follow-ups.
+T1 to T5: not started. Next: re-check of the revised design; then wait for the store plan, the LAN follow-ups and the server fixtures.
