@@ -40,6 +40,12 @@ Catalog content or rights decisions, new search or muscle behaviour, artwork cha
 **A-T1.** Add the public catalog and muscle projection readers: remove the `legacy_muscle_profiles` baseline
 use (`catalog_muscle.dart` around lines 375-401 and 729-765), replace the muscle schema with the public
 muscle schema (no `legacy_*`, `actors`, `search_log`, claim free text; structured citations only).
+**A-T1b.** Replace the stored `alkion-muscle-pin/2` (`catalog_muscle.dart` 777-813,
+`catalog_execution_repository.dart` 146-150) with a reduced pin built from the public projection (new
+version). Existing Dev rows are not migrated; the owner starts a fresh profile. Remove the loader checks
+on dropped text: `_validateMuscleClosure`, confidence-criteria rules (about 700-718), the human-reviewer
+actor check; keep checks on structured fields and source status fields. The public muscle schema is an
+allowlist with `additionalProperties: false`: any key outside it fails.
 **A-T2.** Manifest reader and lineage check: per-file digests, export digest, `execution_catalog_sha256`,
 re-pinned `muscle_bundle_ref`, scope binding. Refuse unknown manifest versions and extra files.
 **A-T3.** Tests with synthetic bundles: valid, malformed, newer version, digest mismatch, forbidden key
@@ -49,7 +55,7 @@ in catalog or muscle file, lineage mismatch.
 
 **B-T1. Import.** `app/assets/catalog/` holds the export exactly, with licence text, `NOTICE.md`,
 `PROVENANCE.md`, manifest. `tool/import_public_catalog.py` replaces `stage_catalog.py`: it verifies the
-manifest and file digests and refuses extra files and any forbidden key or known leak identifier.
+manifest and file digests and refuses extra files, digest mismatches and any key outside the public schema. The known-identifier leak scan runs Animus-side; the list is private and is not committed here.
 `pubspec.yaml` declares the directory. Port the useful checks from `catalog_muscle_contract.py`.
 **B-T2. Remove the gate.** `main.dart` loads for every launch; `catalog_development.dart` becomes
 `catalog_loader.dart` reading `assets/catalog/`. Remove `catalog_trial`, `ALKION_CATALOG_DEV`,
