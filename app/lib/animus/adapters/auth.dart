@@ -42,7 +42,10 @@ final class OidcAnimusAuth implements AnimusAuthPort {
     AnimusBrowserPort? browser,
     http.Client Function()? httpClientFactory,
     @visibleForTesting Duration signInTimeout = _signInTimeout,
-  }) : _signInBound = signInTimeout,
+    @visibleForTesting Future<void> Function()? afterBrowserTimedOut,
+  }) : assert(signInTimeout > Duration.zero),
+       _afterBrowserTimedOut = afterBrowserTimedOut,
+       _signInBound = signInTimeout,
        _secrets = secrets,
        _browser =
            browser ?? SystemAnimusBrowser(platform: scope.config.platform),
@@ -50,6 +53,10 @@ final class OidcAnimusAuth implements AnimusAuthPort {
 
   final AnimusScope scope;
   final Duration _signInBound;
+  final Future<void> Function()? _afterBrowserTimedOut;
+  // Latched when the browser's own timeout reached this adapter, because the
+  // browser clears its pending state before the failure finishes propagating.
+  bool _browserTimedOut = false;
   final AnimusSecretStore _secrets;
   final AnimusBrowserPort _browser;
   final http.Client Function() _httpClientFactory;
@@ -116,7 +123,9 @@ final class OidcAnimusAuth implements AnimusAuthPort {
           // only a pending call whose own window elapsed is a sign-in that
           // timed out. A hang elsewhere (discovery, exchange) is unavailable.
           final timedOut =
-              signIn && _browser.authorizePending && _browser.windowElapsed;
+              signIn &&
+              (_browserTimedOut ||
+                  (_browser.authorizePending && _browser.windowElapsed));
           _fence();
           unawaited(_browser.cancel().catchError((Object _) {}));
           unawaited(_dropManager());
@@ -182,6 +191,10 @@ final class OidcAnimusAuth implements AnimusAuthPort {
       browser: _browser,
       checkCurrent: () => _check(epoch),
       intent: intent,
+      onBrowserTimedOut: () async {
+        _browserTimedOut = true;
+        await _afterBrowserTimedOut?.call();
+      },
     );
     _manager = manager;
     _client = client;
@@ -257,6 +270,7 @@ final class OidcAnimusAuth implements AnimusAuthPort {
     _check(epoch);
     _retained = false;
     _session = null;
+    _browserTimedOut = false;
     final manager = await _fresh(epoch, intent: intent);
     // Reject plain-only discovery before preparing or launching any flow.
     final methods = manager.discoveryDocument.codeChallengeMethodsSupported;
@@ -600,6 +614,7 @@ final class _GuardedManager extends OidcUserManager {
     required this.browser,
     required this.checkCurrent,
     required this.intent,
+    required this.onBrowserTimedOut,
   }) : super.lazy(
          discoveryDocumentUri: OidcUtils.getOpenIdConfigWellKnownUri(
            config.issuer,
@@ -614,6 +629,7 @@ final class _GuardedManager extends OidcUserManager {
   bool receivedCallback = false;
   final AnimusBrowserPort browser;
   final void Function() checkCurrent;
+  final Future<void> Function() onBrowserTimedOut;
   final Logger _silent = Logger.detached('AnimusOidc')..level = Level.OFF;
   @override
   Logger get logger => _silent;
@@ -679,6 +695,7 @@ final class _GuardedManager extends OidcUserManager {
         redirectUri: config.redirectUri,
       );
     } on AnimusBrowserTimedOut {
+      await onBrowserTimedOut();
       checkCurrent();
       throw const AnimusAuthFailure(AnimusAuthFailureKind.timedOut);
     }

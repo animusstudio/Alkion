@@ -35,6 +35,12 @@ abstract interface class AnimusBrowserPort {
   /// clock or the wall clock. The monotonic clock and Dart timers pause while
   /// a device is suspended, so the wall clock is the second witness. False
   /// when no call is outstanding.
+  ///
+  /// Trade-off: a forward wall-clock step of the window or more makes an
+  /// in-time callback report timed out. That fails closed and the user
+  /// retries. A backward step combined with a suspend can understate the
+  /// elapsed time, but the provider's own 300 s ceremony bound still rejects
+  /// the late sign-in.
   bool get windowElapsed;
 }
 
