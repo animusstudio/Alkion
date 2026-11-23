@@ -37,7 +37,7 @@ own branch and PR. This page records only the order and which files each plan ow
 | 2 | [Plain language: workout flow](2026-11-23-plain-language-workout-flow.md) | Standard | Legacy UI removal |
 | 2 | [Plain language: Today, Profile and History](2026-11-23-plain-language-today-profile-history.md) | Standard | Legacy UI removal |
 | 3 | [Catalog workout send](2026-11-23-catalog-workout-send.md) | Full, cross-repository | Legacy store removal; current LAN follow-ups delivered |
-| 3 | [Public catalog bundle](2026-11-23-public-catalog-bundle.md) | Standard | Rights review approved; legacy UI removal |
+| 3 | [Public catalog bundle](2026-11-23-public-catalog-bundle.md) | Full (part A loader contract, part B import) | Part A: legacy UI removal; part B: publication approval (G2) |
 
 The catalog rights review and licence choice run first and in parallel, in the private
 coordination repository. Only their outcome comes here.
