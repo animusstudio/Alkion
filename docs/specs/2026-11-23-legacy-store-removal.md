@@ -38,88 +38,143 @@ writes catalog-native data.
   Receiving verification and restore check them. Restore is atomic by generation.
   `docs/alkion/backup.md` still says "Frozen format `alkion-backup/1`", which is stale.
 - The four repositories each keep a dead `Object legacy` constructor.
+- Compat rows are written in three places: `session_writer.dart` (`writeCompatibleSet`),
+  `session_repository.dart` (set copy on edit) and `top_set_backfill.dart`.
+- For catalog sets `sets.is_top_set` and `is_pr` are always 0. Catalog top and PR live in
+  `catalog-load/1` derived results (`catalogPrSql`) and in `workoutOrderSelect` and `setPrSql`,
+  which still `COALESCE` with `legacy_local_*`.
+- `RestoreService.restore` refuses `foreign_profile` when an identity exists and the backup's
+  profile id differs. Fresh restore needs an empty support root (`restore_target_not_empty`
+  otherwise), and `AlkionProfile` refuses a root holding bytes without an identity.
+- Pending restores and fresh preparations started by an older build resume through `complete`
+  and `completeFresh`, which do not re-verify the backup.
 
 ## Decisions and rationale
 
-- **D1 Legacy profile.** A profile is legacy if, at schema version 7 or lower, any of these exist,
-  including tombstoned rows:
-  - an `exercises` row without `execution_definition_bytes`;
-  - a `sets` row without `catalog_set_bytes`;
+- **D1 Legacy profile.** The predicate is version-aware and runs only after the existing
+  integrity, foreign-profile, history and digest checks pass, so the existing "preserved" codes
+  (S10) win and a query on a missing column is never mistaken for corruption. A profile is legacy
+  if any of these exist, including tombstoned rows:
+  - at schema version below 5 (no catalog bytes columns): any `exercises` or `sets` row;
+  - at version 5 or higher: an `exercises` row without `execution_definition_bytes`, a `sets` row
+    without `catalog_set_bytes`, or a `day_template_items` row (non-catalog slot) with no
+    `catalog_selection_bytes`;
   - a `derived_results` row with profile version `reps-compat/1`;
-  - any `origin_mappings`, `source_artifacts` or `import_journal` row (imported Reps evidence).
+  - a `corrections` row with NULL `source_revision_id`;
+  - any row in `origin_mappings`, `source_artifacts`, `source_revisions`, `import_journal`,
+    `import_generations` or `correspondence`;
+  - a stored draft or finished-recovery block without catalog selection.
 
-  A profile with none of these is clean, including an empty one. Rationale: these are exactly the
-  rows only the removed model can read, and no migration can give them a catalog meaning.
-- **D2 Refusal.** The check runs in the read-only preflight, before any write, on the inspection
-  copy. The store throws a new "legacy profile preserved" code. The app shows a plain screen and
-  offers **Start new** and **Restore backup**. Bytes, WAL and sidecars stay as found. Rationale:
-  the existing "preserved" codes already promise this, and the owner's old history must stay
-  recoverable by the old build until the one-shot migration has run.
-- **D3 Start new** moves the old profile files into a preserved folder inside app storage and
-  creates a fresh profile. The app never deletes them; only the owner (uninstall or manual clear)
-  does. Start new asks for confirmation and says where the old data went.
-- **D4 In-place migration 8 for clean profiles**: drops the three `reps_compat1_*` views and
-  nothing else. The legacy columns (`muscle_group`, start-weight fields, set `weight_kg`/`reps`)
-  stay as inert storage that the app never reads and writes only as empty or null. Rationale:
-  dropping columns rewrites tables that hold immutable revision evidence, changes every
-  per-table backup digest, and gains nothing once no row can use them. Reads of top set and PR
-  switch to the sets' own `is_top_set`/`is_pr`, which equal the old `COALESCE` result because no
-  override rows exist in a clean profile.
-- **D5 Atomic and byte-exact.** Migration 8 runs in the existing single write transaction. Before
-  commit it re-checks D1 and compares the per-table canonical digests of every table with the
-  state before the migration. Any difference aborts and rolls back to version 7.
-- **D6 Backups.** The frame stays `alkion-backup/2` for writing and the reader keeps accepting
-  frames 1 and 2; the frame version is not the schema version. A backup is accepted only if its
-  snapshot `user_version` is 8 or higher, whatever its frame. Older snapshots, including every backup of a legacy profile, are
-  refused during receiving verification, before staging, with a plain message that says the backup
-  predates this version and cannot be restored. Rationale: one rule is testable and honest; a
-  version-7 backup of a clean profile could migrate, but nothing distinguishes it for the owner.
-  Backups made by this build are accepted by this build only.
-- **D7 Profile creation.** A new profile is created at the latest schema through the same chain,
-  so its history and digests match a migrated profile.
-- **D8 Muscle group field.** `Exercise.muscleGroup` and `ExerciseDraft.muscleGroup` are removed
-  with every user (T1 lists them). The active-session draft JSON key `exerciseMuscleGroup` is no
-  longer written and is ignored on read; a draft that still carries it loads normally. A fresh
-  profile has no such drafts and draft JSON is not migrated.
+  Verified: custom exercises carry `execution_definition_bytes`, catalog sets carry
+  `catalog_set_bytes`, and catalog derived rows are `catalog-load/1`, so a clean profile is not
+  caught. An empty profile is clean.
+- **D2 Refusal.** The check is read-only on the inspection copy, before any write. The store throws
+  a new "legacy profile preserved" code. The app shows a plain screen with **Start new**,
+  **Restore backup** and **Save a copy**. The profile files stay as found; WAL and sidecar bytes
+  may differ after any read, so tests assert content, not file hashes.
+- **D3 Start new (move aside).** The unit is the whole support root.
+  1. Write a durable intent file in the root's parent (sibling `.<appId>-preserved-intent`) naming
+     the target `.<appId>-preserved-<stamp>`; fsync the file and the parent.
+  2. Rename the root to the target in one atomic rename; fsync the parent.
+  3. Create the new empty root, then remove the intent.
+  A leftover fresh-restore preparation directory moves aside with the same stamp.
+  Resume: intent present, root present, target absent: redo step 2. Intent present, target
+  present: finish step 3. Root absent with no intent is an ordinary first start. Nothing is ever
+  deleted. Rationale: any file left in the root makes `AlkionProfile` refuse the root and fresh
+  restore refuse `restore_target_not_empty`; moving only `profiles/<id>` before the identity file
+  could let a kill leave `LocalStore.open` creating an empty store under the old identity. The
+  pattern follows `freshPreparationDirectory`. The notification journal and `entry_journal` live
+  outside the root or are keyed to the old profile: T4 records where each lives, and leaves them
+  in place, since an old-profile notification is refused as foreign and its journal entry deleted.
+  The OS notification stays posted until dismissed.
+- **D4 Restore backup from the refusal screen** is Start new followed by the existing first-start
+  flow (`freshState()`), because a v8 backup always comes from a different profile id and replace
+  restore would refuse `foreign_profile`. The old profile stays preserved either way.
+- **D5 Migration 8** for clean profiles drops the three `reps_compat1_*` views and nothing else.
+  Legacy columns (`muscle_group`, start-weight fields, set `weight_kg`/`reps`) stay inert: never
+  read, and written empty or null. Reads do **not** switch to `sets.is_top_set`/`is_pr`, which are
+  0 for catalog sets. Instead the legacy-only readers are deleted:
+  `_bestLoadsSql` (`exercise_repository.dart`), `bestTopSet` and the last-top scope
+  (`session_repository.dart`), `legacySetOnlySql`, `topSetIndex` and its caller in
+  `active_session_controller.dart`, `top_set_backfill.dart`, and the `LoggedSet` fallback in
+  `models.dart`. `setPrSql` becomes `catalogPrSql`, `workoutOrderSelect` carries catalog top and
+  PR only, and plain counts read `FROM sets`. `baseWeightKg` and `plateStepKg` are removed with
+  the start-weight model, or, if a catalog path still needs one, kept and reworded; the plan
+  resolves it from the code. `exerciseMuscleGroup` stays in the strict `_draftFields` allow-list
+  and is read with an empty default, so existing drafts still load.
+- **D6 Atomic and exact.** Migration 8 runs in the existing single write transaction, after
+  migrations up to 7 have run in it. It re-checks D1, takes the per-table canonical digests inside
+  the transaction before any statement, runs, and compares again. `schema_migrations` is excluded
+  (as `restore.dart` excludes it); the dropped views are not tables. Any difference aborts and
+  rolls back to 7.
+- **D7 Backups.** The `alkion-backup/1` frame stays. In-app receiving verification and restore
+  accept a snapshot only at `user_version` 8 or higher; older ones, including every backup of a
+  legacy profile, are refused before staging with a plain message. The host tool
+  `alkion-verify-backup` keeps accepting versions 1 to 8 and reports "not restorable here" for
+  older ones, so the owner can verify the safety backup and use it as input to the one-shot
+  migration. A pending restore or fresh preparation begun by an older build is resolved at launch,
+  before the gate: if its backup predates 8, it is abandoned through the existing abandon path
+  with a plain notice, and the old profile is then judged by D1. It is never completed.
+- **D8 Profile creation.** A new profile is created at the latest schema through the same chain.
+- **D9 Leaving the old data.** Preserved files cannot leave the device by themselves and a
+  downgrade means uninstalling, which wipes them. The refusal screen's **Save a copy** writes a raw
+  copy of the preserved profile to a place the owner picks. The owner gate also asks the owner to
+  settle Animus sends first and to attach the new profile again: the old attachment and any
+  pending send intents are stranded with the old profile.
 
 ## Boundaries
 
 - Not in scope: UI removal (UI plan), Animus send (catalog send plan), the one-shot history
   migration, and dropping legacy columns (a later change if wanted).
-- The Animus recovery tables, receipts, drafts and timers are untouched. A stored draft that holds
-  an old block key goes through the existing unreadable-state flow, not this plan.
+- The Animus recovery tables, receipts, drafts, timers, `LocalActionKind` and stored operations are
+  untouched. Empty workouts keep `workoutFinish`; catalog edits keep `definitionEdit`.
+- The `muscle_group` field in the Animus definition patch (`animus/workout_translation.dart`) stays
+  with the catalog send plan.
 - The refusal screen's wording and layout follow the plain-language backup plan's components.
 
 ## Acceptance
 
 - **S1.** A clean version-7 profile with catalog and custom data opens, migrates to 8 and shows
-  identical sessions, stats and progress. Every non-view table's canonical digest is unchanged.
-- **S2.** After migration none of the three `reps_compat1_*` views exists, and the schema digest
-  equals the registry's version-8 value. A new profile has the same digest.
-- **S3.** Each legacy marker in D1, alone, makes a version-7 profile refuse to open. The file,
-  WAL and journal bytes are identical before and after. Start new and Restore are offered.
-- **S4.** A refused profile is not retried into a partial state: reopening refuses again, with
-  the same bytes.
+  identical sessions, stats, progress and top-set/PR display. Every table's canonical digest
+  except `schema_migrations` is unchanged.
+- **S2.** After migration the three views are gone and the schema digest equals the registry's
+  version-8 value. A new profile has the same digest. A source guard test fails if `reps_compat1_`
+  or `legacy_local_` appears anywhere in `lib/`.
+- **S3.** Each marker in D1, alone, makes a profile refuse to open, at every schema version it can
+  occur in (including below 5). Row content is unchanged after the refusal. Start new, Restore
+  backup and Save a copy are offered.
+- **S4.** Reopening a refused profile refuses again with the same rows.
 - **S5.** Migration interrupted at each statement and by a process kill before commit leaves
-  version 7 and unchanged bytes. The next open completes it once, with one history row per
-  version.
+  version 7, the same migration history and the same per-table digests. The next open completes
+  it once, with one history row per version.
 - **S6.** A forced digest difference inside the migration transaction aborts it.
-- **S7.** The app writes no `reps-compat/1` row and no row without catalog bytes in any
-  session, edit or finish path. Top-set and PR flags display as before.
-- **S8.** Backups made at version 8 (frame 2) verify and restore. A snapshot at version 7 or lower,
-  in frame 1 or 2, from a clean or legacy profile, is refused at receiving verification before any staging, with the plain message. A
-  manifest with an unknown version stays refused.
-- **S9.** Start new preserves the old files, creates a fresh profile and never deletes data.
-  An interrupted Start new resumes or leaves the old profile as it was.
-- **S10.** A profile at a version newer than 8, a foreign profile and a corrupt store keep their
-  existing "preserved" refusals.
-- **S11.** Replay: reopening a migrated profile, and restoring the same backup twice, change
-  nothing further.
-- **S12.** A stored draft carrying `exerciseMuscleGroup` loads, and the next save omits the key.
+- **S7.** No session, edit, finish, backfill or draft path writes a `reps-compat/1` row, a set
+  without catalog bytes, an exercise without an execution definition or a slot without catalog
+  selection.
+- **S8.** Version-8 backups verify and restore. A version-7 backup, from a clean or legacy
+  profile, is refused in-app before any staging. `alkion-verify-backup` still verifies versions
+  1 to 8 and reports older ones as not restorable here. An unknown manifest version stays
+  refused.
+- **S9.** Start new follows D3: kills at each step resume, the old root is preserved whole, and
+  the new root is empty and valid. Fresh-restore preparation and notification journals behave as
+  D3 states.
+- **S10.** Refusal then Restore: with a version-8 backup, the old profile is moved aside and the
+  backup restores through the first-start flow. The old profile is intact.
+- **S11.** A profile newer than 8, a foreign profile and a corrupt store keep their existing
+  "preserved" refusals, even when they also hold legacy rows.
+- **S12.** A pending restore or fresh preparation from an older build whose backup predates 8 is
+  abandoned with a notice, never completed.
+- **S13.** After Start new, an old-profile notification tap is refused as foreign, its journal
+  entry is removed and the app stays stable.
+- **S14.** Replay: reopening a migrated profile changes nothing. Restoring the same backup twice
+  creates a new generation each time with equal covered state.
+- **S15.** A stored draft with `exerciseMuscleGroup` still loads.
 
 ## Open owner decisions (recommended default)
 
-1. Drop the legacy columns now (recommended: no, keep inert, see D4).
+1. Drop the legacy columns now (recommended: no, keep inert, see D5).
 2. Start new moves the old profile aside and keeps it (recommended) or may delete it after the
    owner confirms a second time.
-3. Refuse every pre-8 backup (recommended) or allow version-7 backups of clean profiles.
+3. Refuse every pre-8 backup in-app (recommended) or allow version-7 backups of clean profiles.
+
+Owner approved all defaults on 2026-11-23: fresh profile, inert columns, refusal, Start new moves aside and never deletes.
