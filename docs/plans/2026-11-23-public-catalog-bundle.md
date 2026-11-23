@@ -1,7 +1,7 @@
 # Ship the public catalog in every build
 
 2026-11-23 · **Full lane** · **Approved** (owner; CC BY-SA 4.0 for the data).
-Revised after design review 2026-11-23; needs re-check.
+Revised after design review 2026-11-23; re-check passed.
 Parent: [app cleanup roadmap](2026-11-23-app-cleanup-roadmap.md) (wave 3). Baseline: `104232d`.
 Why Full: the loader and staging contract change (public format, new manifest, lineage check without
 legacy fields), not just a build flag. Part A can start early; part B waits for the final owner approval
