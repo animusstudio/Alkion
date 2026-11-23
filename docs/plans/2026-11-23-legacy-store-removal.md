@@ -1,6 +1,6 @@
 # Legacy store removal and fresh profile
 
-2026-11-23 · Full lane · **Proposed**. Revised after design review 2026-11-23; needs re-check.
+2026-11-23 · Full lane · **Approved**. Revised after design review 2026-11-23; re-check passed with findings closed.
 Owner approved the plan set with all defaults (fresh profile, inert columns, refuse legacy
 profiles, Start new moves aside and never deletes).
 Spec: [legacy store removal](../specs/2026-11-23-legacy-store-removal.md).
@@ -16,10 +16,10 @@ and `test/ui`.
 
 | Task | Owns | Acceptance |
 | --- | --- | --- |
-| **T1 Stop writing and reading legacy.** Remove every compat write: `writeCompatibleSet`, the set copy in `session_repository.dart`, `top_set_backfill.dart`. Delete the legacy-only readers named in spec D5 (`_bestLoadsSql`, `bestTopSet` and last-top scope, `legacySetOnlySql`, `topSetIndex` and its caller, the `LoggedSet` fallback). Set `setPrSql` to `catalogPrSql`, make `workoutOrderSelect` catalog-only, count `FROM sets`. Do not swap in `sets.is_top_set`/`is_pr`. Resolve `baseWeightKg`/`plateStepKg` (`models.dart`, `active_session_controller.dart`): remove, or keep reworded with a reason recorded here. Remove `Exercise.muscleGroup`, the `muscle_group` select and the legacy Progress series, but keep `exerciseMuscleGroup` readable in `_draftFields`. Add the source-guard test. | `data/session_writer.dart`, `session_repository.dart`, `stats_repository.dart`, `progress_repository.dart`, `exercise_repository.dart`, `top_set_backfill.dart`, `catalog_load_history.dart`, `models.dart`, `session/active_session_controller.dart` (only the lines named), matching tests | S2 guard, S7, S15 |
+| **T1 Stop writing and reading legacy.** Remove every compat write: `writeCompatibleSet`, the set copy in `session_repository.dart`, `top_set_backfill.dart`. Delete the legacy-only readers named in spec D5 (`_bestLoadsSql`, `bestTopSet` and last-top scope, `legacySetOnlySql`, `topSetIndex` and its caller, the `LoggedSet` fallback). Set `setPrSql` to `catalogPrSql`, make `workoutOrderSelect` catalog-only, count `FROM sets`. Do not swap in `sets.is_top_set`/`is_pr`. Remove `baseWeightKg`/`plateStepKg` (model fields only; the UI plan has already removed their readers in `set_editor_sheet.dart`, `exercise_editor.dart` and `day_editor.dart`, and T1 must find none). Remove `Exercise.muscleGroup`, the `muscle_group` select and the legacy Progress series, but keep `exerciseMuscleGroup` readable in `_draftFields`. Add the source-guard test. | `data/session_writer.dart`, `session_repository.dart`, `stats_repository.dart`, `progress_repository.dart`, `exercise_repository.dart`, `top_set_backfill.dart`, `catalog_load_history.dart`, `models.dart`, `session/active_session_controller.dart`, `ui/editor_guard.dart`, `session/resume.dart`, `character_body_preview.dart`, matching tests | S2 guard, S7, S15 |
 | **T2 Migration 8 and the gate.** Migration 8 drops the three views; new digest and version wherever pinned. Version-aware D1 predicate in preflight, after the integrity, foreign-profile, history and digest checks. In-transaction recheck and before/after table digests (excluding `schema_migrations`, snapshot taken inside the transaction after migrations up to 7). New store exception code. New profiles at version 8. | `store/schema.dart`, `store/local_store.dart`, `store/generation_selection.dart` if it pins versions, `test/alkion/store/` | S1, S2, S3, S4, S5, S6, S11 |
 | **T3 Backups.** In-app verification and restore require `user_version` 8 or higher, with a plain refusal code. `alkion-verify-backup` keeps accepting 1 to 8 and reports "not restorable here". Resolve pending restores and fresh preparations begun by an older build at launch (abandon with notice if the backup predates 8). | `recovery/backup.dart`, `recovery/restore.dart`, `recovery/stored_copies.dart` as needed, `tool/alkion_verify_backup.dart`, `test/alkion/recovery/` | S8, S12, S14 |
-| **T4 Refusal screen, Start new, Save a copy.** Implement D3 and D4. New small module for the move-aside with durable intent, fsyncs and resume rules; locate and handle the notification journal, `entry_journal` and any fresh-restore preparation as the spec states. New refusal screen; routing in `_presentLaunchFailure` in `main.dart`. | new `ui/alkion_recovery/legacy_profile_screen.dart`, new move-aside module under `recovery/`, `main.dart` `_presentLaunchFailure` hook only, `test/alkion/recovery/`, `test/ui/` | S3, S9, S10, S13 |
+| **T4 Refusal screen, Start new, Save a copy.** Implement D3 and D4. New small module for the move-aside with durable intent, fsyncs and resume rules; the sibling journals stay put and a pending sign-in reservation blocks it, as the spec states. New refusal screen; routing in `_presentLaunchFailure` in `main.dart`. | new `ui/alkion_recovery/legacy_profile_screen.dart`, new move-aside module under `recovery/`, `main.dart` `_presentLaunchFailure` hook only, `test/alkion/recovery/`, `test/ui/` | S3, S9, S10, S13, S16 |
 | **T5 Fixtures and tools.** `tool/alkion_store_recovery.dart` seeds legacy markers (around lines 363, 1475-1501, 1750), so its fixtures would be refused: rewrite them as catalog data. About 53 test files write non-catalog sets or exercises and 13 touch the compat view or derived rows: migrate them to the synthetic catalog fixtures from the UI plan, and delete tests whose subject was the compat view. This task runs with T1 and T2, since they cannot pass without it. | `tool/alkion_store_recovery.dart`, `test/alkion/**` and `test/**` files that seed legacy rows | S1, S7 |
 | **T6 Docs.** `docs/alkion/{storage,backup,recovery,acceptance,legacy-retirement,development}.md`, `app/AGENTS.md` hard rules, owner gate text. | those docs | all |
 
@@ -51,9 +51,8 @@ Real SQLite files built by the version-7 registry, not fakes:
 ## Checks
 
 - Focused: `make -C app test TEST='--concurrency=2 test/alkion/store test/alkion/recovery'`,
-  `test/data`, `test/ui/alkion_recovery`; `make -C app analyze`.
-- Tools: `make -C app alkion-store-recovery` and `alkion-backup-recovery` into fresh output
-  directories pass.
+  `test/data`, `test/ui`; `make -C app analyze`.
+- Tools: `make -C app alkion-store-recovery` into a fresh output directory passes, and `alkion-verify-backup` accepts v1-8 and reports older ones as not restorable here.
 - Integrated: `make -C app format`, the full `make -C app test`, one Alkion range review (Sonnet
   `xhigh`), CI green on the PR.
 
@@ -70,5 +69,4 @@ Real SQLite files built by the version-7 registry, not fakes:
 
 ## Task state
 
-Proposed; nothing started. Next: re-check by the design reviewer, then owner start once the UI
-plan has merged.
+Approved; nothing started. Next: start once the UI plan has merged.

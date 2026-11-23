@@ -1,6 +1,6 @@
 # Legacy store removal and fresh profile
 
-2026-11-23 · Full lane (stored data, schema migration, backup compatibility) · **Approved**. Approved by the owner on 2026-11-23 ("I confirm every decision"), with every recommended default.
+2026-11-23 · Full lane (stored data, schema migration, backup compatibility) · **Approved**. Approved by the owner on 2026-11-23 ("I confirm every decision"), with every recommended default. Revised after design review 2026-11-23; re-check passed with findings closed.
 Plan: [legacy store removal](../plans/2026-11-23-legacy-store-removal.md).
 Parent: [app cleanup roadmap](../plans/2026-11-23-app-cleanup-roadmap.md) (wave 2, after
 [legacy UI removal](../plans/2026-11-23-legacy-ui-removal.md)). Baseline: `104232d`, schema version 7.
@@ -71,7 +71,7 @@ writes catalog-native data.
 - **D2 Refusal.** The check is read-only on the inspection copy, before any write. The store throws
   a new "legacy profile preserved" code. The app shows a plain screen with **Start new**,
   **Restore backup** and **Save a copy**. The profile files stay as found; WAL and sidecar bytes
-  may differ after any read, so tests assert content, not file hashes.
+  stay byte-identical: the preflight refusal asserts file, WAL and SHM bytes (the captured-copy check). Only a killed migration (S5) asserts content.
 - **D3 Start new (move aside).** The unit is the whole support root.
   1. Write a durable intent file in the root's parent (sibling `.<appId>-preserved-intent`) naming
      the target `.<appId>-preserved-<stamp>`; fsync the file and the parent.
@@ -83,10 +83,11 @@ writes catalog-native data.
   deleted. Rationale: any file left in the root makes `AlkionProfile` refuse the root and fresh
   restore refuse `restore_target_not_empty`; moving only `profiles/<id>` before the identity file
   could let a kill leave `LocalStore.open` creating an empty store under the old identity. The
-  pattern follows `freshPreparationDirectory`. The notification journal and `entry_journal` live
-  outside the root or are keyed to the old profile: T4 records where each lives, and leaves them
-  in place, since an old-profile notification is refused as foreign and its journal entry deleted.
-  The OS notification stays posted until dismissed.
+  pattern follows `freshPreparationDirectory`. The journals `.<appId>-notification-intents` (`notification_envelope.dart`) and
+  `.<appId>-first-entry` (`entry_journal.dart`) are siblings of the root and do not move. Old-profile
+  notification intents are refused as foreign and deleted. Start new refuses while a pending
+  sign-in reservation exists (it already fails as `entry_profile_conflict`); the owner finishes or
+  abandons the sign-in first. The OS notification stays posted until dismissed.
 - **D4 Restore backup from the refusal screen** is Start new followed by the existing first-start
   flow (`freshState()`), because a v8 backup always comes from a different profile id and replace
   restore would refuse `foreign_profile`. The old profile stays preserved either way.
@@ -98,16 +99,18 @@ writes catalog-native data.
   (`session_repository.dart`), `legacySetOnlySql`, `topSetIndex` and its caller in
   `active_session_controller.dart`, `top_set_backfill.dart`, and the `LoggedSet` fallback in
   `models.dart`. `setPrSql` becomes `catalogPrSql`, `workoutOrderSelect` carries catalog top and
-  PR only, and plain counts read `FROM sets`. `baseWeightKg` and `plateStepKg` are removed with
-  the start-weight model, or, if a catalog path still needs one, kept and reworded; the plan
-  resolves it from the code. `exerciseMuscleGroup` stays in the strict `_draftFields` allow-list
+  PR only, and plain counts read `FROM sets`. `baseWeightKg` and `plateStepKg` are **removed**: every reader is a non-catalog branch that the UI
+  plan makes dead (`active_session_controller.dart` after its catalog early returns,
+  `set_editor_sheet.dart`, `exercise_editor.dart`, `day_editor.dart`, `editor_guard.dart`,
+  `resume.dart`). This plan deletes only the model fields and requires that no reader remains in the
+  UI-plan files, which is why it waits for that plan. `exerciseMuscleGroup` stays in the strict `_draftFields` allow-list
   and is read with an empty default, so existing drafts still load.
 - **D6 Atomic and exact.** Migration 8 runs in the existing single write transaction, after
   migrations up to 7 have run in it. It re-checks D1, takes the per-table canonical digests inside
   the transaction before any statement, runs, and compares again. `schema_migrations` is excluded
   (as `restore.dart` excludes it); the dropped views are not tables. Any difference aborts and
   rolls back to 7.
-- **D7 Backups.** The `alkion-backup/1` frame stays. In-app receiving verification and restore
+- **D7 Backups.** The writer stays `alkion-backup/2` and the reader accepts frames 1 and 2. In-app receiving verification and restore
   accept a snapshot only at `user_version` 8 or higher; older ones, including every backup of a
   legacy profile, are refused before staging with a plain message. The host tool
   `alkion-verify-backup` keeps accepting versions 1 to 8 and reports "not restorable here" for
@@ -141,7 +144,7 @@ writes catalog-native data.
   version-8 value. A new profile has the same digest. A source guard test fails if `reps_compat1_`
   or `legacy_local_` appears anywhere in `lib/`.
 - **S3.** Each marker in D1, alone, makes a profile refuse to open, at every schema version it can
-  occur in (including below 5). Row content is unchanged after the refusal. Start new, Restore
+  occur in (including below 5). File, WAL and SHM bytes are identical after the refusal. Start new, Restore
   backup and Save a copy are offered.
 - **S4.** Reopening a refused profile refuses again with the same rows.
 - **S5.** Migration interrupted at each statement and by a process kill before commit leaves
@@ -165,7 +168,9 @@ writes catalog-native data.
 - **S12.** A pending restore or fresh preparation from an older build whose backup predates 8 is
   abandoned with a notice, never completed.
 - **S13.** After Start new, an old-profile notification tap is refused as foreign, its journal
-  entry is removed and the app stays stable.
+  entry is removed and the app stays stable. The sibling journals do not move.
+- **S16.** Start new with a pending sign-in reservation is refused with the existing conflict and
+  changes nothing.
 - **S14.** Replay: reopening a migrated profile changes nothing. Restoring the same backup twice
   creates a new generation each time with equal covered state.
 - **S15.** A stored draft with `exerciseMuscleGroup` still loads.
@@ -176,5 +181,3 @@ writes catalog-native data.
 2. Start new moves the old profile aside and keeps it (recommended) or may delete it after the
    owner confirms a second time.
 3. Refuse every pre-8 backup in-app (recommended) or allow version-7 backups of clean profiles.
-
-Owner approved all defaults on 2026-11-23: fresh profile, inert columns, refusal, Start new moves aside and never deletes.
