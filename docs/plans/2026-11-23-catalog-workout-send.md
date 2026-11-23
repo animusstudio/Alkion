@@ -1,6 +1,6 @@
 # Send catalog workouts to Animus
 
-2026-11-23 · Full lane · **Proposed**.
+2026-11-23 · Full lane · **Approved**. Approved by the owner on 2026-11-23 ("I confirm every decision"), with every recommended default.
 Parent: [app cleanup roadmap](2026-11-23-app-cleanup-roadmap.md) (wave 3). Baseline: `104232d`. `lib/`, `test/` and `tool/` paths are relative to `app/`.
 Private spec: "Catalog workout send" (Animus coordination repository, same date); this plan implements its client side.
 

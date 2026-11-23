@@ -1,6 +1,6 @@
 # App cleanup roadmap
 
-2026-11-23 · Coordination record · **Proposed**.
+2026-11-23 · Coordination record · **Approved**. Approved by the owner on 2026-11-23 ("I confirm every decision"), with every recommended default.
 
 The owner is Alkion's only user and will start a fresh profile, so the app drops all
 legacy, pre-catalog support. These plans also redesign Progress around catalog muscle

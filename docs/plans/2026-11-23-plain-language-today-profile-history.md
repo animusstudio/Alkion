@@ -1,6 +1,6 @@
 # Plain language: Today, Profile and History
 
-2026-11-23 · Standard lane · **Proposed**.
+2026-11-23 · Standard lane · **Approved**. Approved by the owner on 2026-11-23 ("I confirm every decision"), with every recommended default.
 Parent: [app cleanup roadmap](2026-11-23-app-cleanup-roadmap.md) (wave 2).
 Writing guide, terminology table and owner decisions R1-R4:
 [backup and recovery](2026-11-23-plain-language-backup-recovery.md#writing-guide-shared-by-all-three-plans).
@@ -113,5 +113,5 @@ after the legacy UI removal plan merges.
 
 ## Status
 
-2026-11-23 · Standard lane · **Proposed**. Next: owner approval; waits for the legacy UI
+Approved 2026-11-23. Next: waits for the legacy UI
 removal plan.

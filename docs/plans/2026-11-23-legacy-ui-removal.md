@@ -1,6 +1,6 @@
 # Remove the legacy exercise model from the app
 
-2026-11-23 · Standard lane · **Proposed**.
+2026-11-23 · Standard lane · **Approved**. Approved by the owner on 2026-11-23 ("I confirm every decision"), with every recommended default.
 Parent: [app cleanup roadmap](2026-11-23-app-cleanup-roadmap.md) (wave 1). Baseline: `104232d`.
 Follows [the 2026-11-08 legacy removal](2026-11-08-legacy-removal.md), which deferred the items here.
 `lib/`, `test/` and `tool/` paths are relative to `app/`.
@@ -127,4 +127,4 @@ keep `alkion_history_recovery.dart` until that plan starts.
 
 ## Task state
 
-Proposed; nothing started. Next: owner approval, then T0.
+Approved; nothing started. Next: T0.

@@ -1,6 +1,6 @@
 # Plain language: backup and recovery
 
-2026-11-23 · Standard lane · **Proposed**.
+2026-11-23 · Standard lane · **Approved**. Approved by the owner on 2026-11-23 ("I confirm every decision"), with every recommended default.
 Parent: [app cleanup roadmap](2026-11-23-app-cleanup-roadmap.md) (wave 1).
 Siblings: [workout flow](2026-11-23-plain-language-workout-flow.md), [Today, Profile and History](2026-11-23-plain-language-today-profile-history.md).
 Baseline: public `main` at `104232d`. `lib/`, `test/` and `tool/` paths are relative to `app/`. Branch named at approval.
@@ -146,4 +146,4 @@ T1 and T3 run together; T2 follows T1. This plan merges first.
 - A safe in-app path for a foreign-profile backup; hiding the Linux-only path field on Android.
 
 ## Status
-Proposed (2026-11-23). Next: owner approval of R1-R4.
+Approved 2026-11-23, R1-R4 at their recommended defaults. Next: T1 and T3.

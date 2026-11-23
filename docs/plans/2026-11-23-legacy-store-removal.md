@@ -1,6 +1,6 @@
 # Legacy store removal and fresh profile
 
-2026-11-23 · Full lane · **Proposed**.
+2026-11-23 · Full lane · **Approved**. Approved by the owner on 2026-11-23 ("I confirm every decision"), with every recommended default.
 Spec: [legacy store removal](../specs/2026-11-23-legacy-store-removal.md).
 Parent: [app cleanup roadmap](2026-11-23-app-cleanup-roadmap.md) (wave 2). Starts after the
 [legacy UI removal](2026-11-23-legacy-ui-removal.md) merges, so no screen reads legacy fields.
@@ -67,4 +67,4 @@ pre-8 backup.
 
 ## Task state
 
-Proposed; nothing started. Next: owner approval and the UI plan merged.
+Approved; nothing started. Next: the design review, then the UI plan merged.

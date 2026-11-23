@@ -1,6 +1,6 @@
 # Legacy store removal and fresh profile
 
-2026-11-23 · Full lane (stored data, schema migration, backup compatibility) · **Proposed**.
+2026-11-23 · Full lane (stored data, schema migration, backup compatibility) · **Approved**. Approved by the owner on 2026-11-23 ("I confirm every decision"), with every recommended default.
 Plan: [legacy store removal](../plans/2026-11-23-legacy-store-removal.md).
 Parent: [app cleanup roadmap](../plans/2026-11-23-app-cleanup-roadmap.md) (wave 2, after
 [legacy UI removal](../plans/2026-11-23-legacy-ui-removal.md)). Baseline: `104232d`, schema version 7.

@@ -1,6 +1,6 @@
 # Ship the public catalog in every build
 
-2026-11-23 · Standard lane · **Proposed**.
+2026-11-23 · Standard lane · **Approved**. Approved by the owner on 2026-11-23 ("I confirm every decision"), with every recommended default.
 Parent: [app cleanup roadmap](2026-11-23-app-cleanup-roadmap.md) (wave 3). Baseline: `104232d`. `lib/`, `test/` and `tool/` paths are relative to `app/`.
 Waits for: the rights review and final owner approval of one export digest (recorded in the
 coordination repository), and the [legacy UI removal](2026-11-23-legacy-ui-removal.md).

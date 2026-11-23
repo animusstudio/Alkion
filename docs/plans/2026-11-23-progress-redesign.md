@@ -1,6 +1,6 @@
 # Progress redesign
 
-2026-11-23 · Standard lane · **Proposed**.
+2026-11-23 · Standard lane · **Approved**. Approved by the owner on 2026-11-23 ("I confirm every decision"), with every recommended default.
 
 Part of the [app cleanup roadmap](2026-11-23-app-cleanup-roadmap.md) (wave 1). `lib/`, `test/` and `tool/` paths are relative to `app/`. The profile is fresh and
 catalog-only, so Progress can be rebuilt around catalog families, variants and muscle profiles.
@@ -126,7 +126,7 @@ colors and legend wording.
 
 ## Task state
 
-Proposed; nothing started.
+Approved; nothing started. Next: T1 to T4.
 
 ## Next
 
