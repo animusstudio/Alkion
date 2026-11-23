@@ -68,9 +68,7 @@ A plan edits only the files it owns. Anything else is a request to the owning pl
   - legacy SQL in `data/*_repository.dart`, including the legacy Progress series;
   - backup and restore format;
   - the other `Exercise.muscleGroup` users: `ui/editor_guard.dart`, `session/resume.dart`,
-    `session/active_session_controller.dart` (draft JSON key), `character_body_preview.dart`
-    and the `muscle_group` entry in `animus/workout_translation.dart` (a recorded one-line
-    handoff from the send plan's ownership of `animus/`);
+    `session/active_session_controller.dart` (draft JSON key) and `character_body_preview.dart`;
   - fresh-profile handling: one new refusal screen file under `ui/alkion_recovery/`
     plus its routing line, merged after the backup and recovery wording plan.
 - **Progress redesign:**
@@ -108,7 +106,7 @@ A plan edits only the files it owns. Anything else is a request to the owning pl
   - first start (`ui/alkion_recovery/first_start_screen.dart`);
   - History screens and editors;
   - Bodyweight text other than Progress placement.
-- **Catalog workout send:** `animus/` (the one `muscle_group` line in `workout_translation.dart` is removed earlier by the store plan), the three `ui/animus_*.dart` panels (including
+- **Catalog workout send:** `animus/` (including the legacy-only `muscle_group` field in `workout_translation.dart`), the three `ui/animus_*.dart` panels (including
   their wording) and `docs/alkion/animus-workout-upload.md`.
 - **Public catalog bundle:** catalog asset staging, the build flag that gates the
   catalog, catalog loading in `main.dart`, licensing notices for catalog data.
