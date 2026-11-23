@@ -32,9 +32,11 @@ writes catalog-native data.
 - Exercises carry `muscle_group` and a start-weight model; sets carry `weight_kg`, `reps` and
   `is_top_set`/`is_pr`. Catalog rows leave the legacy fields empty or null and keep their own
   bytes columns (`execution_definition_bytes`, `catalog_set_bytes`).
-- Backup `alkion-backup/1` records the snapshot's `user_version`, every migration digest and the
-  `sqlite_master` digest, plus per-table row counts and digests. Receiving verification and
-  restore check them. Restore is atomic by generation.
+- Backups are written as frame `alkion-backup/2` (`backupVersion` in `lib/recovery/backup.dart`);
+  the reader accepts frames 1 and 2. The manifest records the snapshot's `user_version`, every
+  migration digest and the `sqlite_master` digest, plus per-table row counts and digests.
+  Receiving verification and restore check them. Restore is atomic by generation.
+  `docs/alkion/backup.md` still says "Frozen format `alkion-backup/1`", which is stale.
 - The four repositories each keep a dead `Object legacy` constructor.
 
 ## Decisions and rationale
@@ -66,14 +68,19 @@ writes catalog-native data.
 - **D5 Atomic and byte-exact.** Migration 8 runs in the existing single write transaction. Before
   commit it re-checks D1 and compares the per-table canonical digests of every table with the
   state before the migration. Any difference aborts and rolls back to version 7.
-- **D6 Backups.** The `alkion-backup/1` frame stays. A backup is accepted only if its snapshot
-  `user_version` is 8 or higher. Older snapshots, including every backup of a legacy profile, are
+- **D6 Backups.** The frame stays `alkion-backup/2` for writing and the reader keeps accepting
+  frames 1 and 2; the frame version is not the schema version. A backup is accepted only if its
+  snapshot `user_version` is 8 or higher, whatever its frame. Older snapshots, including every backup of a legacy profile, are
   refused during receiving verification, before staging, with a plain message that says the backup
   predates this version and cannot be restored. Rationale: one rule is testable and honest; a
   version-7 backup of a clean profile could migrate, but nothing distinguishes it for the owner.
   Backups made by this build are accepted by this build only.
 - **D7 Profile creation.** A new profile is created at the latest schema through the same chain,
   so its history and digests match a migrated profile.
+- **D8 Muscle group field.** `Exercise.muscleGroup` and `ExerciseDraft.muscleGroup` are removed
+  with every user (T1 lists them). The active-session draft JSON key `exerciseMuscleGroup` is no
+  longer written and is ignored on read; a draft that still carries it loads normally. A fresh
+  profile has no such drafts and draft JSON is not migrated.
 
 ## Boundaries
 
@@ -99,8 +106,8 @@ writes catalog-native data.
 - **S6.** A forced digest difference inside the migration transaction aborts it.
 - **S7.** The app writes no `reps-compat/1` row and no row without catalog bytes in any
   session, edit or finish path. Top-set and PR flags display as before.
-- **S8.** Backups made at version 8 verify and restore. A version-7 backup, from a clean or legacy
-  profile, is refused at receiving verification before any staging, with the plain message. A
+- **S8.** Backups made at version 8 (frame 2) verify and restore. A snapshot at version 7 or lower,
+  in frame 1 or 2, from a clean or legacy profile, is refused at receiving verification before any staging, with the plain message. A
   manifest with an unknown version stays refused.
 - **S9.** Start new preserves the old files, creates a fresh profile and never deletes data.
   An interrupted Start new resumes or leaves the old profile as it was.
@@ -108,6 +115,7 @@ writes catalog-native data.
   existing "preserved" refusals.
 - **S11.** Replay: reopening a migrated profile, and restoring the same backup twice, change
   nothing further.
+- **S12.** A stored draft carrying `exerciseMuscleGroup` loads, and the next save omits the key.
 
 ## Open owner decisions (recommended default)
 

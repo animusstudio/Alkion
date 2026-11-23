@@ -2,7 +2,7 @@
 
 2026-11-23 · Standard lane · **Proposed**.
 
-Part of the [app cleanup roadmap](2026-11-23-app-cleanup-roadmap.md) (wave 1). The profile is fresh and
+Part of the [app cleanup roadmap](2026-11-23-app-cleanup-roadmap.md) (wave 1). `lib/`, `test/` and `tool/` paths are relative to `app/`. The profile is fresh and
 catalog-only, so Progress can be rebuilt around catalog families, variants and muscle profiles.
 
 ## Outcome
@@ -26,7 +26,8 @@ No `_LiftView` legacy path remains; rows without catalog evidence are not shown.
 
 - **D1. Muscle source is the v2 muscle profiles** (13 regions, per-set pins, recorded vs current), not
   the browse groups behind Today's weekly volume. Progress and Today may therefore disagree until Today
-  moves to the same source (separate plan). Progress labels its source so the gap is explained.
+  moves to the same source ([muscle source alignment](2026-11-23-app-cleanup-roadmap.md#later), not
+  yet written). Progress labels its source so the gap is explained.
 - **D2. Region counts default to primary role**, with a toggle for "any role". No weighting.
 - **D3. Periods 4, 12 and 26 weeks**; weeks start Monday, as in the existing week queries.
 - **D4. No cross-variant strength merging.** One line per variant/setup. Any family normalization is a
@@ -80,8 +81,8 @@ Non-goals: balance panel, family best or cross-variant ratios, bodyweight overla
 
 Wave A has disjoint owned files and runs in parallel; wave B integrates.
 
-- **T1 (data, MVP).** Read-only derivation layer. Owns `app/lib/data/progress_sets.dart`,
-  `app/lib/data/progress_weeks.dart` and `app/test/data/progress_*_test.dart`.
+- **T1 (data, MVP).** Read-only derivation layer. Owns `lib/data/progress_sets.dart`,
+  `lib/data/progress_weeks.dart` and `test/data/progress_*_test.dart`.
   - One bounded read of working sets in a date range (profile, not warm-up, not deleted, qualified
     day), parsed into typed rows: date, exercise, family, variant, setup key, measurement profile.
   - Resolves muscles for the distinct selections via `resolveMuscles`, then buckets per week and per
@@ -90,35 +91,35 @@ Wave A has disjoint owned files and runs in parallel; wave B integrates.
   - Work class: standard code (Opus `high`).
   - Checks: `make -C app analyze`; focused data tests on a synthetic catalog fixture (overlapping
     regions, warm-ups, unknown profile, unqualified date, primary vs any role, week edges).
-- **T2 (Overview, MVP).** Owns `app/lib/ui/progress_overview.dart`, `app/lib/widgets/week_columns.dart`,
+- **T2 (Overview, MVP).** Owns `lib/ui/progress_overview.dart`, `lib/widgets/week_columns.dart`,
   tests. Consumes T1's interface; PR list reuses the existing recent-PR stream read-only. Standard code
   (Opus `high`). Checks: analyze; widget tests for A2, A9, A10.
-- **T3 (Muscles, MVP).** Owns `app/lib/ui/progress_muscles.dart`, `app/lib/ui/progress_heatmap.dart`,
-  `app/lib/data/progress_period_bins.dart`, tests. Reuses `BodyFigure`, legend and region labels
+- **T3 (Muscles, MVP).** Owns `lib/ui/progress_muscles.dart`, `lib/ui/progress_heatmap.dart`,
+  `lib/data/progress_period_bins.dart`, tests. Reuses `BodyFigure`, legend and region labels
   read-only; period bins are new and rescaled from the per-workout bins. The heatmap surface follows
   Today's `visible` handling for the WebView body. Standard code (Opus `high`). Checks: analyze;
   widget tests for A3, A4, A5 with the body surface stubbed.
-- **T4 (Exercise and Bodyweight, MVP).** Owns `app/lib/ui/progress_exercise.dart`,
-  `app/lib/ui/progress_exercise_picker.dart`, `app/lib/ui/progress_change.dart`, the Bodyweight
-  placement in `app/lib/ui/bodyweight_view.dart`, and the tests of the old screen
-  (`progress_*_test.dart`, `bodyweight_history_card_test.dart`). Moves the reusable lift view out of the
+- **T4 (Exercise and Bodyweight, MVP).** Owns `lib/ui/progress_exercise.dart`,
+  `lib/ui/progress_exercise_picker.dart`, `lib/ui/progress_change.dart`, the Bodyweight
+  placement in `lib/ui/bodyweight_view.dart`, and the tests of the old screen
+  (`progress_*_test.dart`, `bodyweight_history_card_test.dart`). Replaces every old exercise-sheet call site in Progress with the new picker. Moves the reusable lift view out of the
   legacy-shared code, drops the legacy branch and footnote, fixes the subtitle, adds one-decimal e1RM
-  through the models' formatting only if that needs no edit to files other plans own (otherwise a local
-  formatter). Work class: standard code (Opus `high`). Checks: analyze; updated target, change, layout
+  with a local formatter. Work class: standard code (Opus `high`). Checks: analyze; updated target, change, layout
   and unavailable tests; new picker tests for A6 to A8.
-- **T5 (integration, MVP, after T1 to T4).** Owns `app/lib/ui/progress_screen.dart` (becomes the
-  switcher), `app/lib/shell/app_shell.dart` (the Progress entry), the `progress*` ARB keys in the four
+- **T5 (integration, MVP, after T1 to T4).** Owns `lib/ui/progress_screen.dart` (becomes the
+  switcher), `lib/shell/app_shell.dart` (the Progress entry), the `progress*` ARB keys in the four
   locales (regenerate with `make -C app get`, never merge generated files) and
-  `docs/alkion/development.md` notes. Work class: standard code (Opus `high`). Checks: analyze;
+  `docs/alkion/development.md` notes (rebased onto other plans' edits). Final step: delete
+  `lib/ui/exercise_sheet.dart` and its test unless Legacy UI removal already did. Work class: standard code (Opus `high`). Checks: analyze;
   `make -C app test TEST='--concurrency=2 test/ui test/data'`; the full suite once.
-- **T6 (later).** Per-variant multi-line comparison on one chart: owns `app/lib/widgets/line_chart.dart`
+- **T6 (later).** Per-variant multi-line comparison on one chart: owns `lib/widgets/line_chart.dart`
   extension (defaults unchanged) and `progress_family.dart`. Standard code.
 - **T7 (later).** Bests for duration, distance and reps-only profiles with their own "best value"
   rules. Owns `progress_profile_bests.dart`; edits `progress_exercise.dart` after T4. Standard code.
 
 ## Owner device check
 
-Host tests are not device qualification. On the A024: open Muscles, scroll and switch periods with the
+Host tests are not device qualification. On a physical phone: open Muscles, scroll and switch periods with the
 body visible, return from another tab, rotate. The WebView body must draw once per visit, not stay
 blank, and not add a third live surface in the tab stack. The owner accepts or rejects the heatmap
 colors and legend wording.

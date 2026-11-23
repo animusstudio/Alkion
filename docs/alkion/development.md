@@ -1,5 +1,15 @@
 # Alkion development and qualified driver handoff
 
+2026-11-23 · [App cleanup roadmap](../plans/2026-11-23-app-cleanup-roadmap.md) · Proposed.
+2026-11-23 · [Legacy UI and code removal](../plans/2026-11-23-legacy-ui-removal.md) · Proposed.
+2026-11-23 · [Legacy store removal](../plans/2026-11-23-legacy-store-removal.md) · Proposed.
+2026-11-23 · [Legacy store removal specification](../specs/2026-11-23-legacy-store-removal.md) · Proposed.
+2026-11-23 · [Progress redesign](../plans/2026-11-23-progress-redesign.md) · Proposed.
+2026-11-23 · [Plain language: backup and recovery](../plans/2026-11-23-plain-language-backup-recovery.md) · Proposed.
+2026-11-23 · [Plain language: workout flow](../plans/2026-11-23-plain-language-workout-flow.md) · Proposed.
+2026-11-23 · [Plain language: Today, Profile and History](../plans/2026-11-23-plain-language-today-profile-history.md) · Proposed.
+2026-11-23 · [Catalog workout send](../plans/2026-11-23-catalog-workout-send.md) · Proposed.
+2026-11-23 · [Public catalog bundle](../plans/2026-11-23-public-catalog-bundle.md) · Proposed.
 2026-11-13 · [Body intro follow-ups](../plans/2026-11-13-body-intro-follow-ups.md) · Done.
 2026-11-11 · [New exercise artwork and female edition selection](../plans/2026-11-11-new-exercise-artwork-and-female-selection.md) · Done.
 2026-11-11 · [Latest artwork review filter](../plans/2026-11-11-artwork-library-latest-filter.md) · Done.

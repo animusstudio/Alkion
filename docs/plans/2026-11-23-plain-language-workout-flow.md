@@ -5,7 +5,7 @@ Parent: [app cleanup roadmap](2026-11-23-app-cleanup-roadmap.md) (wave 2).
 Writing guide, terminology table and owner decisions R1-R4:
 [backup and recovery](2026-11-23-plain-language-backup-recovery.md#writing-guide-shared-by-all-three-plans).
 Waits for: [legacy UI removal](2026-11-23-legacy-ui-removal.md) (it removes the no-catalog
-fallbacks and the legacy choice in the same files). Baseline: public `main` at `104232d`.
+fallbacks and the legacy choice in the same files). Baseline: public `main` at `104232d`. `lib/`, `test/` and `tool/` paths are relative to `app/`.
 
 ## Outcome and observed problems
 
@@ -72,7 +72,7 @@ The path from planning to logging a set is full of developer words and per-slot 
 
 ## Tasks
 
-- **T1 Catalog picker and detail** (standard code: Opus `high`). Owns `lib/catalog_ui/*`
+- **T1 Catalog picker and detail** (standard code: Opus `high`). Owns `lib/catalog_ui/*` (including `catalog_muscle_explorer.dart`)
   and `lib/session/exercise_picker_sheet.dart`, with tests. One Clear filters, wording,
   removed notices. Checks: `make -C app analyze`; focused picker/detail widget tests in
   `en` and `it`.
@@ -84,7 +84,7 @@ The path from planning to logging a set is full of developer words and per-slot 
   On/Off toggle wording. Checks: analyze; focused day-editor and split-tab tests in
   `en` and `it`, including a "More" expanded and a round-trip case.
 - **T3 Live workout, summary, notifications** (standard code: Opus `high`). Owns
-  `lib/session/*` except T1's file, `lib/widgets/rir_picker.dart`, with tests. Checks:
+  `lib/session/*` except T1's file, `lib/shell/notification_explainer.dart`, `lib/widgets/rir_picker.dart`, with tests. Checks:
   analyze; focused live-session, summary and notification tests in `en` and `it`.
 - **T4 Copy** (docs/mechanical: Sonnet `medium`; first, to freeze keys). Owns values of
   the keys used by T1-T3 screens in the four ARB files, adds keys under `plainWorkout*`,

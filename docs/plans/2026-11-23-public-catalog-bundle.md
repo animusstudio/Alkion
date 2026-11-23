@@ -1,7 +1,7 @@
 # Ship the public catalog in every build
 
 2026-11-23 · Standard lane · **Proposed**.
-Parent: [app cleanup roadmap](2026-11-23-app-cleanup-roadmap.md) (wave 3). Baseline: `104232d`.
+Parent: [app cleanup roadmap](2026-11-23-app-cleanup-roadmap.md) (wave 3). Baseline: `104232d`. `lib/`, `test/` and `tool/` paths are relative to `app/`.
 Waits for: the rights review and final owner approval of one export digest (recorded in the
 coordination repository), and the [legacy UI removal](2026-11-23-legacy-ui-removal.md).
 
@@ -11,13 +11,17 @@ The owner wants the exercise catalog to be public and open source. Today it is a
 development only: it is staged from a private file into a Dev build, and the normal build declares
 the public README alone, so a normal build has no exercises. After approval, the catalog data ships
 in the repository and in every build, with its licence and notices. This plan owns the catalog
-asset staging, the build flag that gates the catalog, catalog loading in `main.dart` and the
+asset staging, the build flag that gates the catalog, catalog loading in `lib/main.dart` and the
 catalog data licensing notices.
 
 ## Decisions
 
 - **Approved export only.** The plan imports one exported directory by its digest. If the approval
   names a different digest, or none, this plan does not start.
+- **Today's gate.** Until this plan lands only the Dev identity build loads the catalog
+  (`lib/catalog/catalog_development.dart`), so other builds show the not-included state and
+  cannot add exercises. This plan lifts that gate; the Profile footer already reads
+  "Alkion v{version}" in every build (Today, Profile and History plan).
 - **No flag.** `ALKION_CATALOG_DEV`, the Dev flavour's catalog role, `catalog_trial` and the
   `build-catalog-dev*` targets go. Every build loads the bundled catalog.
 - **Digest check stays.** The loader verifies the bundled files against the manifest digest,
@@ -39,7 +43,7 @@ coordination repository.
 ## Tasks
 
 **T1. Import the approved export.**
-- Add `app/assets/catalog/` with the catalog projection, browse and muscle bundles, scope registry,
+- Add `assets/catalog/` with the catalog projection, browse and muscle bundles, scope registry,
   `manifest.json`, `LICENSE`/licence text, `NOTICE.md` and `PROVENANCE.md` exactly as exported.
 - Replace `tool/stage_catalog.py` with a small `tool/import_public_catalog.py` that copies an
   explicit export directory and verifies the manifest digest and file digests; it refuses extra
@@ -48,9 +52,9 @@ coordination repository.
 - `pubspec.yaml` declares the new directory; remove the `catalog_trial` README entry.
 
 **T2. Remove the Dev-only gate.**
-- Delete `ALKION_CATALOG_DEV` use in `main.dart`: the catalog loads for every launch unless a test
+- Delete `ALKION_CATALOG_DEV` use in `lib/main.dart`: the catalog loads for every launch unless a test
   injects `catalogBundle` or `catalogLoader`. Keep those injection points for tests.
-- Rename `catalog_development.dart` to a plain `catalog_loader.dart` reading from
+- Rename `lib/catalog/catalog_development.dart` to a plain `lib/catalog/catalog_loader.dart` reading from
   `assets/catalog/`, keeping the manifest and digest verification and the unavailable state.
 - Remove the Dev flavour catalog wiring, `stage-catalog*`, `verify-catalog-dev`, `build-catalog-dev*`
   and `build/private-catalog-*` from the Makefile, scripts and CI; make the APK check
@@ -108,6 +112,6 @@ The licence itself is decided in the coordination repository (recommended CC BY-
 
 The plan may not start: rights review can fail or shrink the catalog. Removing the flag makes a
 bad bundle visible in every build, so the digest check and the failure state matter. Overlap with
-the Legacy UI removal on `main.dart` hooks and the not-included screen: this plan starts after it
+the Legacy UI removal on `lib/main.dart` hooks and the not-included screen: this plan starts after it
 merges and rebases on it. CC BY-SA ShareAlike with an AGPL app is a documentation question, not a
 code one: the notice states data and software are separate works.

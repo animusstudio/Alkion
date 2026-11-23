@@ -5,7 +5,7 @@ Parent: [app cleanup roadmap](2026-11-23-app-cleanup-roadmap.md) (wave 2).
 Writing guide, terminology table and owner decisions R1-R4:
 [backup and recovery](2026-11-23-plain-language-backup-recovery.md#writing-guide-shared-by-all-three-plans).
 Waits for: [legacy UI removal](2026-11-23-legacy-ui-removal.md) (Today labels and the
-History set editor's legacy display are removed there). Baseline: public `main` at `104232d`.
+History set editor's legacy display are removed there). Baseline: public `main` at `104232d`. `lib/`, `test/` and `tool/` paths are relative to `app/`.
 
 ## Outcome and observed problems
 
@@ -32,7 +32,8 @@ History set editor's legacy display are removed there). Baseline: public `main` 
 ## Decisions and non-goals
 
 - **Wording, layout and grouping only.** No data, saving or retry behavior changes.
-- **Profile footer:** "Alkion v{version}", localized through a key; no "Dev" anywhere.
+- **Profile footer:** "Alkion v{version}", localized through a key, in every build; no "Dev"
+  or "debug" there. The build type appears only under the About/Details area.
 - **First start:** primary action "Get started"/"Use without an account"; when sign-in is
   not configured the sign-in button is hidden instead of explained. Restore wording
   in this screen's `alkionFirstReselect*` keys belongs to the backup plan (values only).
@@ -47,7 +48,7 @@ History set editor's legacy display are removed there). Baseline: public `main` 
 - **Today unavailable states:** one "Couldn't load" line per tile; start-blocked days say
   "{name} is turned off. Turn it on in Plan." or "Check the reps for {name} in Plan."
 - **Non-goals:** the session launcher's behavior and limits (wording only), Progress,
-  Animus panels, backup screens, export messages (see backup plan follow-ups), the
+  Animus panels, backup screens, the
   Today labels and legacy display removal (legacy UI removal plan).
 
 ## Acceptance
@@ -72,12 +73,15 @@ History set editor's legacy display are removed there). Baseline: public `main` 
 
 - **T1 Today, session launcher, first start** (standard code: Opus `high`). Owns
   `lib/ui/today_screen.dart`, `today_stat_tiles.dart`, `workload_top_muscles.dart`,
-  `lib/ui/alkion_recovery/first_start_screen.dart`, the session-launcher dialog wording
-  (the launcher file under `lib/shell/` or `lib/session/`), with tests. Checks:
+  `lib/ui/alkion_recovery/first_start_screen.dart`, `lib/shell/session_launcher.dart`,
+  `session_indicator.dart`, `w_tab_bar.dart` (wording only), and wording only in
+  `lib/ui/character_body*.dart` and `body_figure.dart` (the legacy tab is removed by the legacy plan), with tests. Checks:
   `make -C app analyze`; focused Today and first-start widget tests in `en` and `it`.
 - **T2 Profile** (standard code: Sonnet `high`). Owns `lib/ui/profile_screen.dart`
   (footer, row helper texts, export row wording; not the Animus panel, owned by the send
-  plan) and `lib/ui/training_preferences_sheet.dart` is owned by the workout plan.
+  plan), and the remaining `lib/ui/export_failure.dart` with the `alkionDocument*` messages
+  ("Delivery only", "private staging"); the legacy plan deletes only its compatibility part.
+  `training_preferences_sheet.dart` belongs to the workout-flow plan.
   Checks: analyze; focused profile test in `en` and `it` pinning the footer.
 - **T3 History screens and editors** (standard code: Opus `high`). Owns
   `lib/ui/history_screen.dart`, `set_editor_sheet.dart`, `catalog_history_editor.dart`

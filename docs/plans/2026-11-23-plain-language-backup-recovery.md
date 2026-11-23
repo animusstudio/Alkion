@@ -2,14 +2,12 @@
 
 2026-11-23 · Standard lane · **Proposed**.
 Parent: [app cleanup roadmap](2026-11-23-app-cleanup-roadmap.md) (wave 1).
-Siblings: [workout flow](2026-11-23-plain-language-workout-flow.md),
-[Today, Profile and History](2026-11-23-plain-language-today-profile-history.md).
-Baseline: public `main` at `104232d`. Branch to be named at approval.
+Siblings: [workout flow](2026-11-23-plain-language-workout-flow.md), [Today, Profile and History](2026-11-23-plain-language-today-profile-history.md).
+Baseline: public `main` at `104232d`. `lib/`, `test/` and `tool/` paths are relative to `app/`. Branch named at approval.
 
 ## Outcome and observed problems
 
-Backup, restore and recovery speak in the app's own storage vocabulary. A person who
-only wants a copy of their workouts reads about digests, manifests and staging.
+Backup, restore and recovery speak in storage vocabulary: digests, manifests, staging.
 
 - **Backup screen.** `alkionBackupExplain` is three sentences about what "counts" as
   verified. `alkionBackupCreate` ("Create backup") and `alkionBackupSaveCopy` ("Create
@@ -18,17 +16,14 @@ only wants a copy of their workouts reads about digests, manifests and staging.
   checks passed".
 - **Restore.** `alkionRestoreConfirmMessage` says the current state is "kept and fenced"
   and that newer work is "listed for review". `alkionRestoreUnknownNewerWork` mentions
-  "bytes". The screen carries six sections (Restores, Newer-work review, Kept workout
-  data, Stored copies and more), most of them read-only evidence with no action.
+  "bytes". The screen carries six sections, most of them read-only evidence with no action.
 - **Foreign profile.** `alkionBackupForeignProfile` tells the user to "Clear Alkion's
-  storage in Android settings", which erases the app's data and its private recovery
-  copies.
-- **Failures.** `alkionStoreRecoveryTitle/Body` (banner and dialog on any failed write) and
-  `alkionKeptNoticeDraft` ("saved data is kept and included in backups") read as alarming
-  internals. `util/error_message.dart` and some surfaces can still show raw exception text.
+  storage in Android settings", which erases the app's data and recovery copies.
+- **Failures.** `alkionStoreRecoveryTitle/Body` and `alkionKeptNoticeDraft` read as alarming
+  internals; `util/error_message.dart` and some surfaces can still show raw exception text.
 
-Goal: a simple front (Back up now, Restore, last backup date) with everything technical
-behind one collapsed **Details** section, and errors that say what happened and what to do.
+Goal: a simple front (Back up now, Restore, last backup date), everything technical behind one
+collapsed **Details** section, and errors that say what happened and what to do.
 
 ## Decisions and non-goals
 
@@ -39,8 +34,7 @@ behind one collapsed **Details** section, and errors that say what happened and 
   If the current flow cannot be one tap without behavior change, the two steps stay but
   sit under one button label and one result (decide at T2; otherwise a follow-up).
 - **Restore in one short sentence:** replaces your data with the backup; the app closes
-  and must be reopened. Previous data is still kept (unchanged behavior) and mentioned
-  only in Details.
+  and must be reopened. Previous data is still kept and mentioned only in Details.
 - **Details (collapsed by default):** restore history, newer-work review, kept workout
   data, stored copies, digest and manifest facts, restore technical details. Safety
   evidence stays reachable; sections with no items do not render at all.
@@ -53,8 +47,8 @@ behind one collapsed **Details** section, and errors that say what happened and 
 - **Error mapping:** each `AppError` kind maps to one calm sentence plus an action
   ("Try again", "Reopen and retry"). Raw `error.toString()` never reaches a widget.
 - **Non-goals:** Animus panels (catalog send plan), first-start entry wording (Today plan),
-  `ui/export_failure.dart` and the profile "saved/shared" messages (see Follow-ups),
-  store/backup format (legacy store removal plan), legacy-tagged strings (legacy UI
+  `ui/export_failure.dart` and the profile `alkionDocument*` messages (Today, Profile and
+  History plan), store/backup format (legacy store removal plan), legacy-tagged strings (legacy UI
   removal plan).
 
 ## Writing guide (shared by all three plans)
@@ -67,14 +61,16 @@ behind one collapsed **Details** section, and errors that say what happened and 
 - **Numbers.** Counts use plural ICU forms ("12 sets"); dates use the locale's short date;
   never show a raw date or id string; use the unit setting for weight; "-" means no data
   and needs no explanation.
+- **Scope.** User-visible text only. Code doc comments, log lines and test names are out of
+  scope; "developer-style" text means words a person reads on screen.
 - **Forbidden on the front:** build, profile (for the user's data), local state, staging,
   digest, hash, manifest, schema, token, payload, synchronize, prescription, evidence.
-- **States.** Prefer the shown result over a state explanation; a failed save says
-  "Couldn't save" plus one action, never why internally.
+- **States.** Show the result, not a state explanation; a failed save says "Couldn't save"
+  plus one action.
+- **No data** is "-", with no explanation. "Backup file" is "backup" in every language.
 
 | Concept | EN | IT |
 | --- | --- | --- |
-| Backup file | backup | backup |
 | Make a backup | Back up now | Esegui backup |
 | Restore | Restore | Ripristina |
 | Plan day (one training day) | day | giorno |
@@ -85,10 +81,9 @@ behind one collapsed **Details** section, and errors that say what happened and 
 | Working set | set | serie |
 | Details (collapsed section) | Details | Dettagli |
 | Try again | Try again | Riprova |
-| No data | - | - |
 
-Words banned as synonyms: routine, template, split (as a noun for the whole plan),
-session (use "workout"), setup, execution, rotation.
+Banned synonyms: routine, template, split (for the whole plan), session (use "workout"),
+setup, execution, rotation.
 
 ## Owner decisions (recommended default first)
 
@@ -97,8 +92,7 @@ session (use "workout"), setup, execution, rotation.
   "Effort". Decided here, applied in the workout-flow plan.
 - **R2 Terminology.** The table above: "plan day" for a training day, never "routine";
   "variation" for an exercise variant, never "execution"; "workout" for a session.
-- **R3 Helper-text length.** One sentence, at most 80 characters (English); longer text
-  goes behind Details or is dropped.
+- **R3 Helper-text length.** One sentence, at most 80 characters (English).
 - **R4 Evidence sections.** Collapse rather than delete (matches the owner's depth rule).
 
 ## Acceptance
@@ -137,27 +131,19 @@ session (use "workout"), setup, execution, rotation.
   kept-notice, store-recovery, `error*` and launch-failure keys in the four ARB files,
   plus new keys under prefix `plainRecovery*`; deletes only keys it made unused. Then
   `make -C app get` and commit the regenerated output. Italian is drafted for owner review.
-- **T4 Integration** (coordinator). Merge order T1, T3, T2; full `make -C app test`
-  and `make -C app analyze`; screenshot check of backup screen in `en` and `it`.
+- **T4 Integration** (coordinator). Merge order T1, T3, T2; full `make -C app test` and
+  `analyze`; screenshot check of the backup screen in `en` and `it`.
 
-Parallelism: T1 and T3 run together; T2 follows T1. This plan has no wave-1 waits and
-merges before the other two plain-language plans.
+T1 and T3 run together; T2 follows T1. This plan merges first.
 
 ## Owner gates
 
-- Owner approves this plan and decisions R1-R4.
-- Owner reviews the Italian wording before merge; German and Spanish follow the English
-  and Italian meaning without separate review.
-- Owner confirms the one-button backup if T2 finds it needs a behavior change.
+- Owner approves this plan and R1-R4, reviews the Italian wording before merge (German and
+  Spanish follow meaning), and confirms the one-button backup if T2 finds it needs a behavior change.
 
 ## Follow-ups (not tasks)
 
-- `ui/export_failure.dart` and the profile `alkionDocument*` messages ("Delivery only",
-  "private staging") are unowned in the roadmap; proposal: this plan owns the file and
-  its keys, because the wording is about backups and exports.
-- A safe in-app path for a foreign-profile backup would be a behavior change.
-- Hiding the Linux-only path field on Android if it is still shown.
+- A safe in-app path for a foreign-profile backup; hiding the Linux-only path field on Android.
 
 ## Status
-
-2026-11-23 · Standard lane · **Proposed**. Next: owner approval of R1-R4.
+Proposed (2026-11-23). Next: owner approval of R1-R4.
